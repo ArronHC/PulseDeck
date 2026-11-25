@@ -28,6 +28,11 @@ import {
 import { useKmReducedMotion } from "@/components/motion/MotionProvider";
 import { AnimatedNumber, Collapse } from "@/components/motion";
 import { Skeletonize, skeletonText } from "@/components/ui/skeleton";
+import { usePublicInfo } from "@/contexts/PublicInfoContext";
+import {
+  ProbeThemeSandboxView,
+  ProbeThemeToolbar,
+} from "@/components/hub/ProbeThemeHost";
 
 const EMPTY_LIVE_DATA: LiveData = { online: [], data: {} };
 
@@ -43,6 +48,15 @@ type StatusCardKey = keyof typeof STATUS_CARD_VISIBILITY_DEFAULTS;
 const ERROR_LINGER_MS = 1500;
 
 const Index = () => {
+  const { publicInfo } = usePublicInfo();
+  const activeTheme = publicInfo?.theme || "default";
+  if (activeTheme !== "default") {
+    return <ProbeThemeSandboxView themeShort={activeTheme} />;
+  }
+  return <DefaultProbeView />;
+};
+
+const DefaultProbeView = () => {
   const [t] = useTranslation();
   const { live_data, showCallout } = useLiveData();
   const { nodeList, isLoading, error, refresh } = useNodeList();
@@ -212,37 +226,40 @@ const Index = () => {
           </p>
         </div>
 
-        <Popover.Root>
-          <Popover.Trigger>
-            <IconButton
-              variant="soft"
-              size="2"
-              title={t("status_settings", "Status Settings")}
-              aria-label={t("status_settings", "Status Settings")}
-            >
-              <Settings size={15} />
-            </IconButton>
-          </Popover.Trigger>
-          <Popover.Content width="280px">
-            <Flex direction="column" gap="3">
-              <Text size="2" weight="bold">
-                {t("status_settings", "显示指标")}
-              </Text>
-              <Flex direction="column" gap="2">
-                {statusCards.map((card) => (
-                  <StatusSettingSwitch
-                    key={card.key}
-                    label={card.title}
-                    checked={card.visible}
-                    onCheckedChange={(checked) =>
-                      updateStatusCardVisibility(card.key, checked)
-                    }
-                  />
-                ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <ProbeThemeToolbar compact />
+          <Popover.Root>
+            <Popover.Trigger>
+              <IconButton
+                variant="soft"
+                size="2"
+                title={t("status_settings", "Status Settings")}
+                aria-label={t("status_settings", "Status Settings")}
+              >
+                <Settings size={15} />
+              </IconButton>
+            </Popover.Trigger>
+            <Popover.Content width="280px">
+              <Flex direction="column" gap="3">
+                <Text size="2" weight="bold">
+                  {t("status_settings", "显示指标")}
+                </Text>
+                <Flex direction="column" gap="2">
+                  {statusCards.map((card) => (
+                    <StatusSettingSwitch
+                      key={card.key}
+                      label={card.title}
+                      checked={card.visible}
+                      onCheckedChange={(checked) =>
+                        updateStatusCardVisibility(card.key, checked)
+                      }
+                    />
+                  ))}
+                </Flex>
               </Flex>
-            </Flex>
-          </Popover.Content>
-        </Popover.Root>
+            </Popover.Content>
+          </Popover.Root>
+        </div>
       </div>
 
       {/* 4-Metric Neutral Bento Summary Strip */}

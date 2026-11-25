@@ -173,4 +173,102 @@ func TestStaticRestrictedDoesNotServeCustomAssetOverride(t *testing.T) {
 	if strings.Contains(string(indexBody), `vite-plugin-pwa:register-sw`) {
 		t.Fatal("restricted index still registers a service worker")
 	}
+
+	probeReq := httptest.NewRequest("GET", "/probe-theme/", nil)
+	probeRec := httptest.NewRecorder()
+	router.ServeHTTP(probeRec, probeReq)
+	if probeRec.Code != 404 {
+		t.Fatalf("restricted /probe-theme/ status = %d, want 404", probeRec.Code)
+	}
+}
+
+func TestProbeThemeIsolationKeepsHubShellAndServesMarketTheme(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldDefaultDistCacheDir := defaultDistCacheDir
+	defaultDistCacheDir = extractSharedDist(t)
+	t.Cleanup(func() {
+		defaultDistCacheDir = oldDefaultDistCacheDir
+	})
+	t.Chdir(t.TempDir())
+
+	themeDist := filepath.Join("data", "theme", "purcarte", "dist")
+	if err := os.MkdirAll(filepath.Join(themeDist, "assets"), 0o755); err != nil {
+		t.Fatalf("create theme dir: %v", err)
+	}
+	themeHTML := `<!doctype html><html lang="en"><head><title>Komari Monitor</title><script type="module" src="/assets/purcarte-app.js"></script><link rel="stylesheet" href="/assets/purcarte.css"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head><body><div id="purcarte-root"></div></body></html>`
+	if err := os.WriteFile(filepath.Join(themeDist, "index.html"), []byte(themeHTML), 0o644); err != nil {
+		t.Fatalf("write theme index.html: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(themeDist, "assets", "purcarte-app.js"), []byte(`console.log("purcarte");`), 0o644); err != nil {
+		t.Fatalf("write theme asset: %v", err)
+	}
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open config db: %v", err)
+	}
+	config.SetDb(db)
+	if err := config.Set(config.ThemeKey, "purcarte"); err != nil {
+		t.Fatalf("set theme: %v", err)
+	}
+	if err := config.Set(config.SitenameKey, "My Unified Hub"); err != nil {
+		t.Fatalf("set sitename: %v", err)
+	}
+
+	router := gin.New()
+	Static(router.Group("/"), func(handlers ...gin.HandlerFunc) {
+		router.NoRoute(handlers...)
+	})
+
+	// 1. Hub shell routes must STILL serve embedded defaultTheme, never hijacked by purcarte
+	for _, hubRoute := range []string{"/", "/servers", "/uptime", "/subscriptions"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest("GET", hubRoute, nil))
+		if rec.Code != 200 {
+			t.Fatalf("hub route %s status = %d, want 200", hubRoute, rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "purcarte-root") {
+			t.Fatalf("hub route %s was hijacked by third-party theme", hubRoute)
+		}
+	}
+
+	// 2. /probe-theme/ serves the installed third-party theme with rewritten assets, no SW, and bridge script
+	probeRec := httptest.NewRecorder()
+	router.ServeHTTP(probeRec, httptest.NewRequest("GET", "/probe-theme/", nil))
+	if probeRec.Code != 200 {
+		t.Fatalf("/probe-theme/ status = %d, want 200", probeRec.Code)
+	}
+	body := probeRec.Body.String()
+	if !strings.Contains(body, `id="purcarte-root"`) {
+		t.Fatalf("/probe-theme/ did not serve purcarte HTML: %s", body)
+	}
+	if !strings.Contains(body, `src="/probe-theme-assets/purcarte/assets/purcarte-app.js"`) {
+		t.Fatalf("/probe-theme/ did not rewrite script src: %s", body)
+	}
+	if !strings.Contains(body, `href="/probe-theme-assets/purcarte/assets/purcarte.css"`) {
+		t.Fatalf("/probe-theme/ did not rewrite stylesheet href: %s", body)
+	}
+	if strings.Contains(body, `vite-plugin-pwa:register-sw`) {
+		t.Fatalf("/probe-theme/ did not strip PWA service worker registration")
+	}
+	if !strings.Contains(body, `data-komari-hub-bridge="1"`) {
+		t.Fatalf("/probe-theme/ missing hub bridge script")
+	}
+	if !strings.Contains(body, `<title>My Unified Hub</title>`) {
+		t.Fatalf("/probe-theme/ did not apply sitename replacement")
+	}
+
+	// 3. Isolated theme asset endpoint serves the third-party JS file
+	assetRec := httptest.NewRecorder()
+	router.ServeHTTP(assetRec, httptest.NewRequest("GET", "/probe-theme-assets/purcarte/assets/purcarte-app.js", nil))
+	if assetRec.Code != 200 || !strings.Contains(assetRec.Body.String(), `console.log("purcarte")`) {
+		t.Fatalf("probe-theme-assets status=%d body=%q", assetRec.Code, assetRec.Body.String())
+	}
+
+	// 4. Reject path traversal on ?theme=
+	badRec := httptest.NewRecorder()
+	router.ServeHTTP(badRec, httptest.NewRequest("GET", "/probe-theme/?theme=../secret", nil))
+	if badRec.Code != 404 {
+		t.Fatalf("traversal ?theme=../secret status = %d, want 404", badRec.Code)
+	}
 }
