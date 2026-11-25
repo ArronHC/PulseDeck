@@ -1,0 +1,128 @@
+import React, { lazy, Suspense, useState, useRef, useCallback, useEffect } from "react";
+import { Card, Popover } from "@radix-ui/themes";
+import { motion } from "motion/react";
+import { CONTROL_MOTION, MOTION_SPRING, MOTION_TRANSITION } from "@/lib/motion";
+import Loading from "@/components/loading";
+
+const loadMiniPingChart = () => import("./MiniPingChart");
+const MiniPingChart = lazy(loadMiniPingChart);
+
+interface FloatMiniPingChartProps {
+  uuid: string;
+  trigger: React.ReactNode; 
+  chartWidth?: string | number; 
+  chartHeight?: string | number;
+  hours?: number;
+}
+
+const MiniPingChartFloat: React.FC<FloatMiniPingChartProps> = ({
+  uuid,
+  trigger,
+  chartWidth = 400,
+  chartHeight = 200,
+  hours = 12,
+}) => {
+  const [open, setOpen] = useState(false);
+  const hoverTimeoutRef = useRef<number | null>(null);
+
+  const clearHoverTimeout = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      window.clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearHoverTimeout, [clearHoverTimeout]);
+
+  const handleMouseEnter = useCallback(() => {
+    void loadMiniPingChart();
+    clearHoverTimeout();
+    hoverTimeoutRef.current = window.setTimeout(() => {
+      setOpen(true);
+    }, 3000);
+  }, [clearHoverTimeout]);
+
+  const handleMouseLeave = useCallback(() => {
+    clearHoverTimeout();
+    hoverTimeoutRef.current = window.setTimeout(() => {
+      setOpen(false);
+    }, 200);
+  }, [clearHoverTimeout]);
+
+  const handleClick = useCallback(() => {
+    void loadMiniPingChart();
+    clearHoverTimeout();
+    setOpen((prev) => !prev);
+  }, [clearHoverTimeout]);
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger>
+        <motion.span
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+          whileHover={CONTROL_MOTION.hover}
+          whileTap={CONTROL_MOTION.tap}
+          transition={CONTROL_MOTION.transition}
+          style={{ cursor: "pointer" }}
+          className="km-mini-ping-chart-float flex items-center justify-center"
+        >
+          {trigger}
+        </motion.span>
+      </Popover.Trigger>
+      <Popover.Content
+        sideOffset={5}
+        collisionPadding={12}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          padding: 0,
+          border: "none",
+          width: typeof chartWidth === "number" ? `${chartWidth}px` : chartWidth,
+          maxWidth: "calc(100vw - 24px)",
+          maxHeight: "calc(100vh - 24px)",
+          overflow: "auto",
+          boxShadow:
+            "hsl(206 22% 7% / 35%) 0px 10px 38px -10px, hsl(206 22% 7% / 20%) 0px 10px 20px -15px",
+          borderRadius: "var(--radius-3)",
+          zIndex: 5,
+        }}
+      >
+        {open && (
+          // overlay 层：图表从触发点「长出来」，与全站弹层同一节奏
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{
+              scale: MOTION_SPRING.soft,
+              y: MOTION_SPRING.soft,
+              opacity: MOTION_TRANSITION.fade,
+            }}
+          >
+            <Suspense
+              fallback={
+                <Card
+                  size="2"
+                  style={{ width: "100%", height: chartHeight }}
+                  className="km-mini-ping-chart flex items-center justify-center"
+                >
+                  <Loading reveal={false} />
+                </Card>
+              }
+            >
+              <MiniPingChart
+                hours={hours}
+                uuid={uuid}
+                width="100%"
+                height={chartHeight}
+              />
+            </Suspense>
+          </motion.div>
+        )}
+      </Popover.Content>
+    </Popover.Root>
+  );
+};
+
+export default MiniPingChartFloat;
