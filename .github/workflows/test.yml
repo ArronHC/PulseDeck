@@ -29,6 +29,16 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Prepare embedded frontend dist for go:embed
+        run: |
+          mkdir -p /tmp/test-dist web/public/defaultTheme
+          printf '<!doctype html><html><head><title>Komari Monitor</title></head><body><div id="root"></div></body></html>\n' > /tmp/test-dist/index.html
+          mkdir -p /tmp/test-dist/assets
+          printf '/* default test asset */\n' > /tmp/test-dist/assets/about-D4JKo971.css
+          cp web-ui/komari-theme.json web/public/defaultTheme/komari-theme.json
+          go run ./scripts/packdist -src /tmp/test-dist -out web/public/defaultTheme/dist.tar.zst
+          rm -rf /tmp/test-dist
+
       # NOTE: the repository stores Go sources with CRLF line endings, which
       # gofmt normalises to LF, so "gofmt -l" currently lists ~327 files. Until
       # that is normalised repo-wide this step is advisory only; flip it to a
