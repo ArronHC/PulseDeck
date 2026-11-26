@@ -446,6 +446,17 @@ func TestSeedDemoIfEmpty(t *testing.T) {
 		require.True(t, strings.HasPrefix(client.IPv4, "198.51.100."))
 		require.NotEmpty(t, client.Token)
 	}
+
+	stopDemo := StartDemoProbes(s.db)
+	defer func() {
+		require.NoError(t, stopDemo(ctx))
+	}()
+	overview, err := s.Overview(ctx, 24*time.Hour, false)
+	require.NoError(t, err)
+	require.Equal(t, 4, overview.Probes.Total)
+	require.Equal(t, 4, overview.Probes.Online)
+	require.Zero(t, overview.Probes.Offline)
+	require.Equal(t, "operational", overview.HealthStatus)
 }
 
 func TestUptimeCheckAndIncidentLifecycle(t *testing.T) {

@@ -51,6 +51,7 @@ func (a *App) StartBackground() error {
 		if err := statushub.SeedDemoIfEmpty(context.Background(), db); err != nil {
 			return fmt.Errorf("seed demo data: %w", err)
 		}
+		a.addCleanup("demo-probes", statushub.StartDemoProbes(db))
 	}
 	registerScheduledWork()
 	a.addCleanup("scheduler", func(context.Context) error {

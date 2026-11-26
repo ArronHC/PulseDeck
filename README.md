@@ -8,7 +8,7 @@
 
 **All-in-one self-hosted server probe, service uptime, and proxy node observability platform.**
 
-[English](./README.md) | [简体中文](./README_zh-cn.md) | [Docker Guide](./DOCKER.md) | [Upstream & Migration](./UPSTREAM.md)
+[English](./README.md) | [简体中文](./README_zh-cn.md) | [Live Demo](https://demo.pd.arronhc.cc.cd) | [Docker Guide](./DOCKER.md) | [Upstream & Migration](./UPSTREAM.md)
 
 </div>
 
@@ -31,9 +31,10 @@ docker compose up -d
 - **Lite (`:lite`)**: Minimal footprint without an embedded proxy core (`PULSEDECK_IMAGE=ghcr.io/arronhc/pulsedeck:lite`).
 - Open `http://127.0.0.1:25774` for the 5-step setup wizard, or configure `PULSEDECK_ADMIN_USER` & `PULSEDECK_ADMIN_PASS` in [docker-compose.yml](./docker-compose.yml) for headless initialization.
 
-### Try Instant Synthetic Demo
+### Live Demo & Instant Synthetic Local Demo
 
-Launch an isolated demo with synthetic probes, monitors, and RFC 5737 subscription nodes (`PULSEDECK_DEMO=true`):
+- **Live Demo**: [https://demo.pd.arronhc.cc.cd](https://demo.pd.arronhc.cc.cd)
+- Launch an isolated local demo with synthetic probes, monitors, and RFC 5737 subscription nodes (`PULSEDECK_DEMO=true`):
 
 ```bash
 docker compose -f docker-compose.demo.yml up -d
@@ -112,6 +113,10 @@ docker compose -f docker-compose.demo.yml up -d
   ./pulsedeck server
   ```
 - **Migrating from Komari**: Upload your Komari `backup.zip` during `/install` or mount your existing Komari `./data` directory (`komari.db` + `metrics.db`). See [UPSTREAM.md](./UPSTREAM.md) and [DOCKER.md](./DOCKER.md) for migration steps, third-party license audit, and upstream security tracking.
+
+## Community
+
+[![LINUX DO](https://img.shields.io/badge/Community-LINUX%20DO-orange)](https://linux.do/)
 
 ## Acknowledgments & License
 

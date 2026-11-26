@@ -8,7 +8,7 @@
 
 **自托管全栈观测与节点管理平台 —— 融合服务器探针、服务可用性监控与代理订阅地图 / 流式测速 / IPPure 纯净度检测。**
 
-[English](./README.md) | [简体中文](./README_zh-cn.md) | [Docker 部署指南](./DOCKER.md) | [上游关系与迁移指南](./UPSTREAM.md)
+[English](./README.md) | [简体中文](./README_zh-cn.md) | [在线演示](https://demo.pd.arronhc.cc.cd) | [Docker 部署指南](./DOCKER.md) | [上游关系与迁移指南](./UPSTREAM.md)
 
 </div>
 
@@ -31,9 +31,10 @@ docker compose up -d
 - **精简版（`:lite`）**：不含内置代理核心，极致轻量（`PULSEDECK_IMAGE=ghcr.io/arronhc/pulsedeck:lite`）。
 - 启动后访问 `http://127.0.0.1:25774` 完成 5 步安装向导，或在 [docker-compose.yml](./docker-compose.yml) 中配置 `PULSEDECK_ADMIN_USER` 与 `PULSEDECK_ADMIN_PASS` 无交互初始化。
 
-### 一键启动虚拟数据演示站（Demo）
+### 在线演示与一键本地 Demo
 
-内置 `PULSEDECK_DEMO=true` 虚拟数据种子模式（采用 RFC 5737 保留 IP 与 `demo.example.com` 虚拟节点，零隐私泄露）：
+- **在线演示站**：[https://demo.pd.arronhc.cc.cd](https://demo.pd.arronhc.cc.cd)
+- 本地也可使用内置 `PULSEDECK_DEMO=true` 虚拟数据种子模式一键拉起演示环境（采用 RFC 5737 保留 IP 与 `demo.example.com` 虚拟节点，零隐私泄露）：
 
 ```bash
 docker compose -f docker-compose.demo.yml up -d
@@ -111,6 +112,10 @@ docker compose -f docker-compose.demo.yml up -d
   ./pulsedeck server
   ```
 - **从 Komari 迁移**：支持在 `/install` 直接上传 Komari `backup.zip` 恢复，或挂载原有 `./data` 目录自动升级表结构；详见 [UPSTREAM.md](./UPSTREAM.md) 与 [DOCKER.md](./DOCKER.md)（含第三方许可证核查与上游安全更新跟进流程）。
+
+## Community
+
+[![LINUX DO](https://img.shields.io/badge/Community-LINUX%20DO-orange)](https://linux.do/)
 
 ## 致谢与开源协议
 

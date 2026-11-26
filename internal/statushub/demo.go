@@ -3,11 +3,25 @@ package statushub
 import (
 	"context"
 	"fmt"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/komari-monitor/komari/database/models"
+	"github.com/komari-monitor/komari/internal/metricstore"
+	"github.com/komari-monitor/komari/pkg/metric"
+	v2 "github.com/komari-monitor/komari/protocol/v2"
+	agent "github.com/komari-monitor/komari/web/agent"
 	"gorm.io/gorm"
+)
+
+const (
+	demoPresenceConnID int64 = -1
+	demoPresenceTTL          = 30 * time.Second
+	demoReportInterval       = 5 * time.Second
+	demoBackfillPoints       = 12
+	demoBackfillStep         = 5 * time.Minute
 )
 
 // SeedDemoIfEmpty adds a fictional dashboard snapshot to an empty installation.
@@ -57,12 +71,182 @@ func seedDemoClients(tx *gorm.DB) error {
 		}
 		clients = append(clients, models.Client{
 			UUID: id.String(), Token: token.String(), Name: server.name, Region: server.region, Group: "Demo",
-			OS: server.os, Arch: server.arch, Virtualization: "kvm", CpuCores: server.cores,
-			IPv4: fmt.Sprintf("198.51.100.%d", 20+i), MemTotal: server.memory * gib, DiskTotal: server.disk * gib,
-			PublicRemark: "Fictional demo server",
+			CpuName: "AMD EPYC 7763 64-Core Processor", OS: server.os, Arch: server.arch,
+			Virtualization: "kvm", CpuCores: server.cores,
+			IPv4: fmt.Sprintf("198.51.100.%d", 20+i), MemTotal: server.memory * gib,
+			SwapTotal: 2 * gib, DiskTotal: server.disk * gib,
+			Version: "2.0.0-demo", PublicRemark: "Fictional demo server",
 		})
 	}
 	return tx.Create(&clients).Error
+}
+
+// StartDemoProbes keeps synthetic demo servers marked online and periodically
+// emits simulated telemetry so public demo views remain populated across restarts.
+func StartDemoProbes(db *gorm.DB) func(context.Context) error {
+	hub := New(db)
+	ctx, cancel := context.WithCancel(context.Background())
+	clients := loadDemoClients(ctx, hub)
+	if len(clients) > 0 {
+		backfillDemoMetrics(ctx, clients, time.Now().UTC())
+		publishDemoReports(ctx, clients, time.Now().UTC(), 0)
+	}
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		defer close(done)
+		ticker := time.NewTicker(demoReportInterval)
+		defer ticker.Stop()
+		var step int64 = 1
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case tick := <-ticker.C:
+				if len(clients) == 0 {
+					clients = loadDemoClients(ctx, hub)
+				}
+				if len(clients) > 0 {
+					publishDemoReports(ctx, clients, tick.UTC(), step)
+					step++
+				}
+			}
+		}
+	})
+
+	return func(shutdownCtx context.Context) error {
+		cancel()
+		select {
+		case <-done:
+			for _, client := range clients {
+				agent.SetPresence(client.UUID, demoPresenceConnID, false)
+				agent.DeleteLatestReport(client.UUID)
+			}
+			return nil
+		case <-shutdownCtx.Done():
+			return shutdownCtx.Err()
+		}
+	}
+}
+
+func loadDemoClients(ctx context.Context, hub *Service) []models.Client {
+	var clients []models.Client
+	if err := hub.dbFor(ctx).
+		Where(&models.Client{Group: "Demo"}).
+		Where("ipv4 LIKE ?", "198.51.100.%").
+		Order("weight DESC, name, uuid").
+		Find(&clients).Error; err != nil {
+		return nil
+	}
+	return clients
+}
+
+func backfillDemoMetrics(ctx context.Context, clients []models.Client, now time.Time) {
+	if metricstore.GetStore() == nil || len(clients) == 0 {
+		return
+	}
+	existing, err := metricstore.QueryMetrics(ctx, metricstore.MetricsQuery{
+		Specs:        []metricstore.MetricSpec{{Name: metricstore.MetricCPU}},
+		Entities:     metricstore.EntityScope{IDs: []string{clients[0].UUID}},
+		Start:        now.Add(-time.Hour),
+		End:          now,
+		Now:          now,
+		AllowMissing: true,
+	})
+	if err == nil && len(existing.Values[metricstore.MetricCPU][metric.AggAvg]) > 0 {
+		return
+	}
+	for i := demoBackfillPoints; i >= 1; i-- {
+		ts := now.Add(-time.Duration(i) * demoBackfillStep)
+		step := int64(demoBackfillPoints - i)
+		for idx, client := range clients {
+			report := buildDemoReport(client, idx, ts, step)
+			_, _ = metricstore.WriteReport(ctx, report)
+		}
+	}
+}
+
+func publishDemoReports(ctx context.Context, clients []models.Client, now time.Time, step int64) {
+	hasStore := metricstore.GetStore() != nil
+	for idx, client := range clients {
+		report := buildDemoReport(client, idx, now, step+demoBackfillPoints)
+		agent.KeepAlivePresence(client.UUID, demoPresenceConnID, demoPresenceTTL)
+		agent.RecordReport(report)
+		if hasStore {
+			_, _ = metricstore.WriteReport(ctx, report)
+		}
+	}
+}
+
+func buildDemoReport(client models.Client, index int, now time.Time, step int64) v2.Report {
+	const gib = int64(1 << 30)
+	wave := math.Sin(float64(step)/4.0 + float64(index)*1.3)
+	wave2 := math.Cos(float64(step)/6.0 + float64(index)*0.9)
+
+	cpuBase := 18.0 + float64(index%4)*11.0
+	cpuUsage := math.Round((cpuBase+wave*8.5)*100) / 100
+	if cpuUsage < 2.0 {
+		cpuUsage = 2.0
+	}
+
+	memTotal := client.MemTotal
+	if memTotal <= 0 {
+		memTotal = 4 * gib
+	}
+	memRatio := 0.34 + float64(index%4)*0.08 + wave2*0.03
+	memUsed := int64(float64(memTotal) * memRatio)
+
+	swapTotal := client.SwapTotal
+	if swapTotal <= 0 {
+		swapTotal = 2 * gib
+	}
+	swapUsed := swapTotal / 12
+
+	diskTotal := client.DiskTotal
+	if diskTotal <= 0 {
+		diskTotal = 40 * gib
+	}
+	diskRatio := 0.28 + float64(index%4)*0.07
+	diskUsed := int64(float64(diskTotal) * diskRatio)
+
+	cores := max(client.CpuCores, 2)
+	load1 := math.Round((float64(cores)*(cpuUsage/100.0)*0.85)*100) / 100
+	load5 := math.Round((load1*0.92)*100) / 100
+	load15 := math.Round((load1*0.85)*100) / 100
+
+	netDown := int64(1_800_000 + index*950_000 + int(math.Abs(wave)*1_400_000))
+	netUp := int64(1_200_000 + index*680_000 + int(math.Abs(wave2)*1_100_000))
+	totalDown := int64(42+index*19)*gib + step*netDown*5
+	totalUp := int64(28+index*13)*gib + step*netUp*5
+
+	return v2.Report{
+		UUID: client.UUID,
+		CPU: v2.CPUReport{
+			Name:  client.CpuName,
+			Cores: cores,
+			Arch:  client.Arch,
+			Usage: cpuUsage,
+		},
+		Ram:  v2.RamReport{Total: memTotal, Used: memUsed},
+		Swap: v2.RamReport{Total: swapTotal, Used: swapUsed},
+		Load: v2.LoadReport{Load1: load1, Load5: load5, Load15: load15},
+		Disk: v2.DiskReport{Total: diskTotal, Used: diskUsed},
+		Network: v2.NetworkReport{
+			Up:        netUp,
+			Down:      netDown,
+			TotalUp:   totalUp,
+			TotalDown: totalDown,
+		},
+		Connections: v2.ConnectionsReport{
+			TCP: 48 + index*27 + int(math.Abs(wave)*18),
+			UDP: 9 + index*5 + int(math.Abs(wave2)*6),
+		},
+		Uptime:    int64((14+index*9)*86400) + step*5,
+		Process:   92 + index*16 + int(step%5),
+		Method:    "demo",
+		UpdatedAt: now.UTC(),
+	}
 }
 
 func seedDemoMonitors(tx *gorm.DB, now time.Time) error {
