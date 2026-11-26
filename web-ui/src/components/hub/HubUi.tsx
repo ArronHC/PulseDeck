@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import type { HealthStatus, UptimeHeartbeat } from "@/types/hub";
@@ -132,7 +133,12 @@ export function HeartbeatStrip({
   heightClass?: string;
 }) {
   const { t } = useTranslation();
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<{
+    idx: number;
+    x: number;
+    top: number;
+    bottom: number;
+  } | null>(null);
 
   const items: Array<{
     status: number; // -1 = empty placeholder, 0 = down, 1 = up, 2 = degraded
@@ -164,12 +170,18 @@ export function HeartbeatStrip({
     return Array.from({ length: slots }, () => ({ status: -1 }));
   }, [heartbeats, compactBeats, slots]);
 
+  const hoveredIdx = hovered?.idx ?? null;
   const hoveredItem = hoveredIdx !== null ? items[hoveredIdx] : null;
+  const placeBelow = (hovered?.top ?? 0) < 110;
+  const clampedX =
+    typeof window !== "undefined" && hovered
+      ? Math.min(Math.max(hovered.x, 128), Math.max(128, window.innerWidth - 128))
+      : hovered?.x ?? 0;
 
   return (
     <div
       className="relative flex items-center gap-[2px] w-full"
-      onMouseLeave={() => setHoveredIdx(null)}
+      onMouseLeave={() => setHovered(null)}
     >
       {items.map((item, idx) => {
         const barColor =
@@ -184,9 +196,18 @@ export function HeartbeatStrip({
         return (
           <div
             key={idx}
-            onMouseEnter={() => {
-              if (item.status !== -1) setHoveredIdx(idx);
-              else setHoveredIdx(null);
+            onMouseEnter={(e) => {
+              if (item.status !== -1) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setHovered({
+                  idx,
+                  x: rect.left + rect.width / 2,
+                  top: rect.top,
+                  bottom: rect.bottom,
+                });
+              } else {
+                setHovered(null);
+              }
             }}
             className={`flex-1 min-w-[2px] rounded-[2px] transition-transform duration-100 ${heightClass} ${barColor} ${
               hoveredIdx === idx && item.status !== -1 ? "scale-y-115" : ""
@@ -195,46 +216,53 @@ export function HeartbeatStrip({
         );
       })}
 
-      {hoveredItem && hoveredItem.status !== -1 && hoveredItem.checked_at && (
-        <div
-          className="pointer-events-none absolute bottom-full mb-2 z-30 min-w-[200px] max-w-[280px] rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 shadow-xl"
-          style={{
-            left: `${Math.min(Math.max(((hoveredIdx ?? 0) / Math.max(1, items.length - 1)) * 100, 10), 85)}%`,
-            transform: "translateX(-50%)",
-          }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  hoveredItem.status === 1
-                    ? "bg-emerald-400"
-                    : hoveredItem.status === 0
-                      ? "bg-rose-400"
-                      : "bg-amber-400"
-                }`}
-              />
-              {hoveredItem.status === 1
-                ? t("pulse.health.beatUp")
-                : hoveredItem.status === 0
-                  ? t("pulse.health.beatDown")
-                  : t("pulse.health.beatDegraded")}
-            </span>
-            <span className="font-mono tabular-nums text-zinc-300">
-              {formatLatency(hoveredItem.latency_ms)}
-            </span>
-          </div>
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-zinc-400 font-mono tabular-nums">
-            <Clock className="h-3 w-3 shrink-0" />
-            <span>{new Date(hoveredItem.checked_at).toLocaleString()}</span>
-          </div>
-          {hoveredItem.message && (
-            <div className="mt-1 truncate text-[11px] text-zinc-300">
-              {hoveredItem.message}
+      {typeof document !== "undefined" &&
+        hovered &&
+        hoveredItem &&
+        hoveredItem.status !== -1 &&
+        hoveredItem.checked_at &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-50 min-w-[210px] max-w-[280px] rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 shadow-xl"
+            style={{
+              left: `${clampedX}px`,
+              top: `${placeBelow ? hovered.bottom + 8 : hovered.top - 8}px`,
+              transform: placeBelow ? "translateX(-50%)" : "translate(-50%, -100%)",
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    hoveredItem.status === 1
+                      ? "bg-emerald-400"
+                      : hoveredItem.status === 0
+                        ? "bg-rose-400"
+                        : "bg-amber-400"
+                  }`}
+                />
+                {hoveredItem.status === 1
+                  ? t("pulse.health.beatUp")
+                  : hoveredItem.status === 0
+                    ? t("pulse.health.beatDown")
+                    : t("pulse.health.beatDegraded")}
+              </span>
+              <span className="font-mono tabular-nums text-zinc-300">
+                {formatLatency(hoveredItem.latency_ms)}
+              </span>
             </div>
-          )}
-        </div>
-      )}
+            <div className="mt-1 flex items-center gap-1 text-[11px] text-zinc-400 font-mono tabular-nums">
+              <Clock className="h-3 w-3 shrink-0" />
+              <span>{new Date(hoveredItem.checked_at).toLocaleString()}</span>
+            </div>
+            {hoveredItem.message && (
+              <div className="mt-1 truncate text-[11px] text-zinc-300">
+                {hoveredItem.message}
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

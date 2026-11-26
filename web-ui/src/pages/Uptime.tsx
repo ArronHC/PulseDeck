@@ -373,7 +373,7 @@ const UptimePageInner: React.FC = () => {
               }
             />
           ) : (
-            <HubCard className="divide-y divide-[var(--hub-border)] overflow-hidden">
+            <HubCard className="divide-y divide-[var(--hub-border)]">
               {filteredMonitors.map((mon) => {
                 const isExpanded = expandedId === mon.id;
                 const StatusIcon = !mon.enabled

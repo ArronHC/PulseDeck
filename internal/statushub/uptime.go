@@ -132,6 +132,17 @@ func (s *Service) CheckMonitor(ctx context.Context, id uint, force bool) (models
 	if !force && (!m.Enabled || !monitorDue(m, s.now())) {
 		return beat, nil
 	}
+	if isDemoMonitor(m) {
+		now := s.now()
+		beat = models.UptimeHeartbeat{
+			MonitorID: id, Status: Up, Message: "200 OK",
+			LatencyMS: demoMonitorLatency(m, now), CheckedAt: now,
+		}
+		err = db.Transaction(func(tx *gorm.DB) error {
+			return recordBeat(tx, &m, &beat)
+		})
+		return beat, err
+	}
 	start := time.Now()
 	outcome, message := s.check(ctx, m)
 	if err := ctx.Err(); err != nil {

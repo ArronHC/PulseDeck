@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,10 +88,13 @@ func seedDemoClients(tx *gorm.DB) error {
 func StartDemoProbes(db *gorm.DB) func(context.Context) error {
 	hub := New(db)
 	ctx, cancel := context.WithCancel(context.Background())
+	now := time.Now().UTC()
+	ensureDemoMonitorsActive(ctx, hub, now)
+	ensureDemoIncidents(ctx, hub, now)
 	clients := loadDemoClients(ctx, hub)
 	if len(clients) > 0 {
-		backfillDemoMetrics(ctx, clients, time.Now().UTC())
-		publishDemoReports(ctx, clients, time.Now().UTC(), 0)
+		backfillDemoMetrics(ctx, clients, now)
+		publishDemoReports(ctx, clients, now, 0)
 	}
 
 	done := make(chan struct{})
@@ -250,7 +255,7 @@ func buildDemoReport(client models.Client, index int, now time.Time, step int64)
 }
 
 func seedDemoMonitors(tx *gorm.DB, now time.Time) error {
-	// Paused monitors retain their sample history and never probe demo targets.
+	var seeded []models.UptimeMonitor
 	for i, monitor := range []struct {
 		name, target string
 		latency      int64
@@ -261,11 +266,12 @@ func seedDemoMonitors(tx *gorm.DB, now time.Time) error {
 	} {
 		m := models.UptimeMonitor{
 			Name: monitor.name, Group: "Demo", Type: "http", Target: monitor.target, IntervalSec: 60, TimeoutSec: 5,
-			Status: Up, LastLatency: monitor.latency, LastCheckAt: &now, LastMessage: "Demo snapshot",
+			Enabled: true, Status: Up, LastLatency: monitor.latency, LastCheckAt: &now, LastMessage: "200 OK",
 		}
 		if err := tx.Create(&m).Error; err != nil {
 			return err
 		}
+		seeded = append(seeded, m)
 		beats := make([]models.UptimeHeartbeat, 0, 36)
 		for j := 35; j >= 0; j-- {
 			beat := models.UptimeHeartbeat{
@@ -281,7 +287,105 @@ func seedDemoMonitors(tx *gorm.DB, now time.Time) error {
 			return err
 		}
 	}
-	return nil
+	return seedDemoIncidents(tx, seeded, now)
+}
+
+func seedDemoIncidents(tx *gorm.DB, monitors []models.UptimeMonitor, now time.Time) error {
+	var incidents []models.UptimeIncident
+	for _, m := range monitors {
+		switch m.Name {
+		case "Demo API":
+			started := now.Add(-60 * time.Minute)
+			resolved := now.Add(-55 * time.Minute)
+			incidents = append(incidents, models.UptimeIncident{
+				MonitorID:   m.ID,
+				MonitorName: m.Name,
+				Status:      "resolved",
+				Message:     "503 Service Unavailable",
+				Recovery:    "200 OK",
+				StartedAt:   started,
+				ResolvedAt:  &resolved,
+				DurationSec: 300,
+			})
+		case "Demo Asset CDN":
+			started := now.Add(-4 * time.Hour)
+			resolved := started.Add(2 * time.Minute)
+			incidents = append(incidents, models.UptimeIncident{
+				MonitorID:   m.ID,
+				MonitorName: m.Name,
+				Status:      "resolved",
+				Message:     "Upstream TLS handshake timeout",
+				Recovery:    "200 OK",
+				StartedAt:   started,
+				ResolvedAt:  &resolved,
+				DurationSec: 120,
+			})
+		}
+	}
+	if len(incidents) == 0 {
+		return nil
+	}
+	return tx.Create(&incidents).Error
+}
+
+func isDemoMonitor(m models.UptimeMonitor) bool {
+	if m.Group != "Demo" || m.KumaSourceID != nil {
+		return false
+	}
+	u, err := url.Parse(m.Target)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "example.com" || strings.HasSuffix(host, ".example.com")
+}
+
+func demoMonitorLatency(m models.UptimeMonitor, now time.Time) int64 {
+	var base int64 = 35
+	switch {
+	case strings.Contains(m.Target, "api.example.com"):
+		base = 68
+	case strings.Contains(m.Target, "cdn.example.com"):
+		base = 24
+	}
+	return base + int64((now.Minute()+int(m.ID)*3)%7)
+}
+
+func ensureDemoMonitorsActive(ctx context.Context, hub *Service, now time.Time) {
+	db := hub.dbFor(ctx)
+	var monitors []models.UptimeMonitor
+	if err := db.Where(&models.UptimeMonitor{Group: "Demo"}).Find(&monitors).Error; err != nil {
+		return
+	}
+	for _, m := range monitors {
+		if !isDemoMonitor(m) || (m.Enabled && m.Status == Up) {
+			continue
+		}
+		_ = db.Model(&m).Updates(map[string]any{
+			"enabled":       true,
+			"status":        Up,
+			"last_check_at": now,
+			"last_message":  "200 OK",
+		}).Error
+	}
+}
+
+func ensureDemoIncidents(ctx context.Context, hub *Service, now time.Time) {
+	db := hub.dbFor(ctx)
+	var monitors []models.UptimeMonitor
+	if err := db.Where(&models.UptimeMonitor{Group: "Demo"}).Find(&monitors).Error; err != nil || len(monitors) == 0 {
+		return
+	}
+	cutoff := now.Add(-24 * time.Hour)
+	var recentCount int64
+	if err := db.Model(&models.UptimeIncident{}).
+		Where("started_at >= ? OR resolved_at >= ?", cutoff, cutoff).
+		Count(&recentCount).Error; err != nil || recentCount > 0 {
+		return
+	}
+	_ = db.Transaction(func(tx *gorm.DB) error {
+		return seedDemoIncidents(tx, monitors, now)
+	})
 }
 
 func seedDemoSubscription(tx *gorm.DB, now time.Time) error {

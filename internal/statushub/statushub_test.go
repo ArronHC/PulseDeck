@@ -437,7 +437,8 @@ func TestSeedDemoIfEmpty(t *testing.T) {
 	uptime, err := s.Uptime(ctx, 24*time.Hour, false)
 	require.NoError(t, err)
 	require.Equal(t, 3, uptime.Total)
-	require.Equal(t, 3, uptime.Paused)
+	require.Zero(t, uptime.Paused)
+	require.Equal(t, 3, uptime.Up)
 	require.Len(t, uptime.Monitors[0].Heartbeats, 36)
 	var clients []models.Client
 	require.NoError(t, s.db.Find(&clients).Error)
@@ -457,6 +458,16 @@ func TestSeedDemoIfEmpty(t *testing.T) {
 	require.Equal(t, 4, overview.Probes.Online)
 	require.Zero(t, overview.Probes.Offline)
 	require.Equal(t, "operational", overview.HealthStatus)
+	require.Len(t, overview.RecentEvents, 4)
+
+	incidents, err := s.Incidents(ctx, 20)
+	require.NoError(t, err)
+	require.Len(t, incidents, 2)
+
+	beat, err := s.CheckMonitor(ctx, uptime.Monitors[0].ID, true)
+	require.NoError(t, err)
+	require.Equal(t, Up, beat.Status)
+	require.Greater(t, beat.LatencyMS, int64(0))
 }
 
 func TestUptimeCheckAndIncidentLifecycle(t *testing.T) {
