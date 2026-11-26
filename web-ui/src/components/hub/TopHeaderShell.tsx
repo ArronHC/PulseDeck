@@ -107,7 +107,7 @@ const TopHeaderInner: React.FC = () => {
     [location.pathname, location.search],
   );
 
-  const siteName = publicInfo?.sitename || "Status Hub";
+  const siteName = publicInfo?.sitename || "PulseDeck";
 
   return (
     <>

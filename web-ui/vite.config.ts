@@ -63,9 +63,9 @@ export default defineConfig(({ mode }) => {
         manifestFilename: "manifest.json",
         includeAssets: ["favicon.ico", "assets/pwa-icon.webp"],
         manifest: {
-          name: "Komari Monitor",
-          short_name: "Komari Monitor",
-          description: "A simple server monitor tool",
+          name: "PulseDeck",
+          short_name: "PulseDeck",
+          description: "All-in-one self-hosted server probe, uptime, and node observability deck.",
           theme_color: "#2563eb",
           background_color: "#ffffff",
           display: "standalone",

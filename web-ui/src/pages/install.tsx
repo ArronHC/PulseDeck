@@ -53,9 +53,9 @@ export default function Install() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [passwordAgain, setPasswordAgain] = useState("");
-  const [sitename, setSitename] = useState("Komari");
+  const [sitename, setSitename] = useState("PulseDeck");
   const [description, setDescription] = useState(
-    "A simple server monitor tool.",
+    "All-in-one self-hosted server probe, uptime, and node observability deck.",
   );
   const [metricDSN, setMetricDSN] = useState("./data/metrics.db");
   const [busy, setBusy] = useState(false);

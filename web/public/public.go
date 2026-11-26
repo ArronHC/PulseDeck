@@ -194,10 +194,10 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 
 	getConfig := func() map[string]any {
 		cfg, _ := config.GetMany(map[string]any{
-			config.DescriptionKey: "A simple server monitor tool.",
+			config.DescriptionKey: "All-in-one self-hosted server probe, uptime, and node observability deck.",
 			config.CustomHeadKey:  "",
 			config.CustomBodyKey:  "",
-			config.SitenameKey:    "Komari Monitor",
+			config.SitenameKey:    "PulseDeck",
 			config.ThemeKey:       DefaultTheme,
 		})
 		return cfg
@@ -287,7 +287,9 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		}
 
 		replacer := strings.NewReplacer(
+			"<title>PulseDeck</title>", "<title>"+cfg[config.SitenameKey].(string)+"</title>",
 			"<title>Komari Monitor</title>", "<title>"+cfg[config.SitenameKey].(string)+"</title>",
+			"All-in-one self-hosted server probe, uptime, and node observability deck.", cfg[config.DescriptionKey].(string),
 			"A simple server monitor tool.", cfg[config.DescriptionKey].(string),
 			"</head>", cfg[config.CustomHeadKey].(string)+"</head>",
 			"</body>", cfg[config.CustomBodyKey].(string)+"</body>",
@@ -332,7 +334,9 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			htmlStr = replaceHTMLLanguage(htmlStr, language)
 		}
 		replacer := strings.NewReplacer(
+			"<title>PulseDeck</title>", "<title>"+cfg[config.SitenameKey].(string)+"</title>",
 			"<title>Komari Monitor</title>", "<title>"+cfg[config.SitenameKey].(string)+"</title>",
+			"All-in-one self-hosted server probe, uptime, and node observability deck.", cfg[config.DescriptionKey].(string),
 			"A simple server monitor tool.", cfg[config.DescriptionKey].(string),
 			"</head>", cfg[config.CustomHeadKey].(string)+"</head>",
 			"</body>", cfg[config.CustomBodyKey].(string)+"</body>",

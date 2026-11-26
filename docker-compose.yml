@@ -1,13 +1,13 @@
 services:
-  komari-hub:
+  pulsedeck:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         # Set to "sing-box" to enable encrypted-node IPPure exit checks inside the container
         INSTALL_PROXY_CORE: none
-    image: komari-hub:latest
-    container_name: komari-hub
+    image: pulsedeck:latest
+    container_name: pulsedeck
     restart: unless-stopped
     ports:
       - "${KOMARI_PORT:-25774}:25774"

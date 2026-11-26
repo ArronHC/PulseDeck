@@ -84,7 +84,7 @@ const Footer = () => {
             }}
           ></span>
           <Text size="2" color="gray">
-            Powered by Komari Monitor.
+            Powered by PulseDeck · Based on Komari.
           </Text>
         </Text>
       ) : (
@@ -102,7 +102,7 @@ const Footer = () => {
             align={{ initial: "center", md: "start" }}
           >
             <Text size="2" color="gray">
-              Powered by Komari Monitor.
+              Powered by PulseDeck · Based on Komari.
             </Text>
             {buildTime && (
               <Text size="1" color="gray">

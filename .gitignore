@@ -36,6 +36,7 @@ go.work.sum
 # build
 komari
 komari-hub
+pulsedeck
 /dist/
 .codex
 .gocache/

@@ -11,6 +11,8 @@ dist
 komari
 komari-hub
 komari-*
+pulsedeck
+pulsedeck-*
 *.db
 *.db-*
 *.test

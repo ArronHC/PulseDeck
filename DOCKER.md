@@ -1,4 +1,4 @@
-# Docker 部署指南（Unified Status Hub）
+# PulseDeck Docker 部署指南
 
 本项目提供开箱即用的多阶段 [Dockerfile](./Dockerfile) 与 [docker-compose.yml](./docker-compose.yml)，支持一键构建前端（`web-ui`）、内嵌静态资源并编译 Go 服务端，无需手动预构建二进制。
 
@@ -20,16 +20,16 @@ docker compose up -d --build
 
 ```bash
 # 构建镜像
-docker build -t komari-hub:latest .
+docker build -t pulsedeck:latest .
 
 # 启动容器
 docker run -d \
-  --name komari-hub \
+  --name pulsedeck \
   --restart unless-stopped \
   -p 25774:25774 \
   -e TZ=Asia/Shanghai \
   -v "$(pwd)/data:/app/data" \
-  komari-hub:latest
+  pulsedeck:latest
 ```
 
 ## 3. 可选：容器内启用加密节点 IPPure 出口纯净度检测
@@ -38,7 +38,7 @@ docker run -d \
 
 1. **构建时内嵌 `sing-box`**：
    ```bash
-   docker build --build-arg INSTALL_PROXY_CORE=sing-box -t komari-hub:latest .
+   docker build --build-arg INSTALL_PROXY_CORE=sing-box -t pulsedeck:latest .
    ```
 2. **运行时挂载宿主机 `mihomo` / `sing-box` 二进制**：
    取消 `docker-compose.yml` 中 `volumes` 的挂载注释即可：
