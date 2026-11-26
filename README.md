@@ -54,6 +54,10 @@ PulseDeck is an independently designed self-hosted observability and network sta
 | :---: | :---: |
 | ![PulseDeck Uptime](./docs/screenshots/uptime.png) | ![PulseDeck Subscriptions](./docs/screenshots/subscriptions.png) |
 
+| First-Run Setup Wizard (`/install`) | Admin Console (`/admin/overview`) |
+| :---: | :---: |
+| ![PulseDeck First-Run Setup](./docs/screenshots/install.png) | ![PulseDeck Admin Console](./docs/screenshots/admin.png) |
+
 ---
 
 ## Quick Start

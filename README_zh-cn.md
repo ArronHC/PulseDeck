@@ -59,6 +59,10 @@ PulseDeck 是一款独立设计的全栈自托管观测与节点管理平台，�
 | :---: | :---: |
 | ![PulseDeck 服务状态](./docs/screenshots/uptime.png) | ![PulseDeck 订阅与节点](./docs/screenshots/subscriptions.png) |
 
+| 首次运行 5 步向导（`/install`） | 全新管理控制台（`/admin/overview`） |
+| :---: | :---: |
+| ![PulseDeck 首次运行向导](./docs/screenshots/install.png) | ![PulseDeck 管理控制台](./docs/screenshots/admin.png) |
+
 ---
 
 ## 快速开始
