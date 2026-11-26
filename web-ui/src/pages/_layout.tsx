@@ -15,6 +15,10 @@ const InnerLayout = () => {
   const location = useLocation();
   const viewTransitionActive = useViewTransitionActive();
   const routeSection = location.pathname.split("/").filter(Boolean)[0] ?? "overview";
+  const isCustomProbeThemeView =
+    routeSection === "servers" &&
+    Boolean(publicInfo?.theme) &&
+    publicInfo?.theme !== "default";
   const bgUrlDesktop = publicInfo?.theme_settings?.backgroundImageUrlDesktop;
   const bgUrlMobile = publicInfo?.theme_settings?.backgroundImageUrlMobile;
   const bgUrl = isMobile ? bgUrlMobile || bgUrlDesktop : bgUrlDesktop;
@@ -22,19 +26,25 @@ const InnerLayout = () => {
   return (
     <div
       className={
-        bgUrl
+        bgUrl && !isCustomProbeThemeView
           ? "km-layout layout flex flex-col w-full min-h-screen bg-cover bg-center bg-fixed bg-no-repeat text-[var(--hub-ink)]"
           : "km-layout layout flex flex-col w-full min-h-screen bg-[var(--hub-canvas)] text-[var(--hub-ink)]"
       }
       style={{
-        backgroundImage: bgUrl ? `url(${bgUrl})` : "none",
+        backgroundImage: bgUrl && !isCustomProbeThemeView ? `url(${bgUrl})` : "none",
         transition:
           "background-image var(--km-dur-slow) var(--km-ease-standard)",
       }}
     >
       <TopHeaderShell />
 
-      <main className="km-main main-content flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 box-border">
+      <main
+        className={
+          isCustomProbeThemeView
+            ? "km-main main-content flex-1 w-full p-0 box-border"
+            : "km-main main-content flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 box-border"
+        }
+      >
         <motion.div
           key={routeSection}
           initial={viewTransitionActive ? false : SURFACE_MOTION.route.initial}

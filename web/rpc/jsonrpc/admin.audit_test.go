@@ -2,13 +2,17 @@ package jsonrpc
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/pkg/rpc"
 )
+
+var auditTestRunSeq atomic.Int64
 
 func testAuditContext(ip, userUUID string) context.Context {
 	return rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{
@@ -106,25 +110,28 @@ func TestClientLifecycleAuditLogsIncludeNameAndChanges(t *testing.T) {
 
 func TestSettingsAndDBExecAuditLogsRetainContextAndRedactSecrets(t *testing.T) {
 	ctx := testAuditContext("192.0.2.11", "actor-admin-2")
+	seq := auditTestRunSeq.Add(1)
+	siteName := fmt.Sprintf("Komari Audit Test %d", seq)
+	apiKey := fmt.Sprintf("secret-api-key-%d", seq)
 
 	if _, rpcErr := adminEditSettings(ctx, &rpc.JsonRpcRequest{
 		Version: rpc.RPC_VERSION,
 		Method:  "admin:editSettings",
 		Params: map[string]any{
-			"sitename": "Komari Audit Test",
-			"api_key":  "secret-api-key-123456",
+			"sitename": siteName,
+			"api_key":  apiKey,
 		},
 	}); rpcErr != nil {
 		t.Fatalf("adminEditSettings failed: %v", rpcErr)
 	}
 	settingsLog := latestAuditLog(t)
-	if strings.Contains(settingsLog.Message, "secret-api-key-123456") {
+	if strings.Contains(settingsLog.Message, apiKey) {
 		t.Fatalf("settings audit log leaked api_key:\n%s", settingsLog.Message)
 	}
 	for _, want := range []string{
 		"Update settings:",
 		"api_key: [REDACTED] (updated)",
-		`"Komari Audit Test"`,
+		`"` + siteName + `"`,
 	} {
 		if !strings.Contains(settingsLog.Message, want) {
 			t.Fatalf("settings audit log missing %q:\n%s", want, settingsLog.Message)

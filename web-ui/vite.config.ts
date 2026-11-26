@@ -102,6 +102,7 @@ export default defineConfig(({ mode }) => {
               urlPattern: ({ request, sameOrigin, url }) =>
                 sameOrigin &&
                 url.pathname.includes("/assets/") &&
+                !url.pathname.startsWith("/probe-theme") &&
                 !url.pathname.includes("/assets/flags/") &&
                 !url.pathname.includes("/assets/logo/") &&
                 (request.destination === "script" ||
@@ -198,6 +199,14 @@ export default defineConfig(({ mode }) => {
           ws: true,
         },
         "/themes": {
+          target: apiTarget,
+          changeOrigin: true,
+        },
+        "/probe-theme": {
+          target: apiTarget,
+          changeOrigin: true,
+        },
+        "/probe-theme-assets": {
           target: apiTarget,
           changeOrigin: true,
         },

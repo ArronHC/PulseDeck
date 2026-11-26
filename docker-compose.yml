@@ -1,0 +1,27 @@
+services:
+  komari-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Set to "sing-box" to enable encrypted-node IPPure exit checks inside the container
+        INSTALL_PROXY_CORE: none
+    image: komari-hub:latest
+    container_name: komari-hub
+    restart: unless-stopped
+    ports:
+      - "${KOMARI_PORT:-25774}:25774"
+    environment:
+      GIN_MODE: release
+      KOMARI_LISTEN: 0.0.0.0:25774
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./data:/app/data
+      # Optional: mount a host mihomo or sing-box binary for encrypted-node IPPure checks
+      # - /usr/local/bin/mihomo:/usr/local/bin/mihomo:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:25774/ping >/dev/null 2>&1 || curl -fsS http://127.0.0.1:25774/api/install/status >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
