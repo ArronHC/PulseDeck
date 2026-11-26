@@ -24,8 +24,7 @@ type Notification struct {
 	Message string              `json:"message"`
 }
 
-// NotificationChannel is implemented by built-in and plugin notification
-// channels.
+// NotificationChannel sends notifications and releases its resources on unload.
 type NotificationChannel interface {
 	Send(context.Context, Notification, map[string]any) error
 	Unload() error

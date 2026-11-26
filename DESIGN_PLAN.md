@@ -1,7 +1,7 @@
 # PulseDeck v2 — Architecture & Refactor Specification
 
 ## 1. Core Architectural Principles
-PulseDeck uses Komari strictly as an **underlying infrastructure wheel/engine** (Go server runtime, SQLite/MetricStore, Agent v2 WebSocket/RPC probe protocol, auth/sessions/2FA/OAuth, ping tasks, notifications, audit logs, and **Plugin Engine**), rather than copying Komari's product UI, admin panel, or branding.
+PulseDeck uses Komari for its Go server, SQLite and metric store, Agent v2 WebSocket/RPC probe protocol, auth/sessions/2FA/OAuth, ping tasks, notifications, and audit logs.
 
 ### Key v2 Changes
 1. **De-Komarify Product Identity & UX**:
@@ -12,9 +12,9 @@ PulseDeck uses Komari strictly as an **underlying infrastructure wheel/engine** 
    - **Post-Init Interactive Onboarding (`/api/admin/onboarding`)**: Backend-persisted onboarding state combined with live DB completion checks (`servers`, `uptime_monitors`, `subscriptions`, `alerts`), powering an interactive walkthrough modal and persistent quick-start checklist inside `/admin/overview` (re-openable anytime).
 3. **Remove Admin Workbench (`/terminal` + Remote File Manager)**:
    - Delete the WebSSH terminal & remote file manager workbench completely from both backend routes/RPCs and frontend UI/routes/server action buttons.
-4. **Remove Theme Market & Third-Party Theme Switching — Keep Plugins 100% Intact**:
+4. **Remove Third-Party Themes and the Plugin Runtime**
    - Delete all `/api/admin/theme/*`, `/probe-theme*`, `/themes/*` third-party theme serving and Theme Market UI/API.
-   - Preserve the entire **Plugin System** (`/api/admin/plugin/*`, `/api/plugin/:short/*`, Plugin Market, Plugin Config, Plugin custom admin/public pages, HTML injection & hooks, zip upload `purpose: "plugin"`).
+   - Remove the Plugin Market, plugin configuration and pages, and plugin-provided HTML injection and request hooks.
 5. **Backend-Only Resource Management (前台只读展示，节点与服务统一在后台添加/管理)**:
    - Public frontend pages (`/`, `/servers`, `/uptime`, `/subscriptions`, `/instance/:uuid`) are **strictly read-only** observability pages.
    - All creation, editing, deletion, sync, speedtest, and IPPure check actions live inside the redesigned **PulseDeck Admin Console**:
@@ -23,7 +23,6 @@ PulseDeck uses Komari strictly as an **underlying infrastructure wheel/engine** 
      - `/admin/uptime` — Service Uptime Monitors & Uptime Kuma Sync Management
      - `/admin/subscriptions` — Proxy Subscriptions, Manual Nodes, Speedtest & IPPure Purity Management
      - `/admin/ping`, `/admin/notifications` (channels/offline/general), `/admin/logs`, `/admin/exec`
-     - `/admin/plugins`, `/admin/plugins/market` (alias `/admin/market/plugins`), `/admin/plugins/config`, `/admin/plugin-page`
      - `/admin/settings` (site/general/custom/sign-on/metrics), `/admin/account`, `/admin/sessions`, `/admin/about`
 
 ---
@@ -79,8 +78,7 @@ PulseDeck uses Komari strictly as an **underlying infrastructure wheel/engine** 
         "servers": 0,
         "uptime_monitors": 0,
         "subscriptions": 0,
-        "subscription_nodes": 0,
-        "plugins": 0
+        "subscription_nodes": 0
       },
       "steps": {
         "add_server": false,
@@ -105,9 +103,9 @@ PulseDeck uses Komari strictly as an **underlying infrastructure wheel/engine** 
 
 ### 2.3 Removed Endpoints
 - All `/api/admin/theme/*` routes, `/probe-theme*`, `/themes/*`, and `upload.PurposeTheme`.
+- All `/api/admin/plugin/*` and `/api/plugin/*` routes, plugin JSON-RPC methods, and the `plugin` upload purpose.
 - All workbench terminal & file manager routes (`/api/clients/terminal`, `/api/clients/transfer/:id`, `/api/preview/client/:uuid/file/download`, `/api/admin/client/:uuid/terminal`, `/api/admin/client/:uuid/file/*`) and terminal/file JSON-RPC methods (`admin:terminal*`, `admin:file*`).
 
 ### 2.4 Preserved Endpoints
 - All PulseDeck StatusHub APIs: `/api/overview`, `/api/uptime/*`, `/api/admin/uptime/*`, `/api/subscriptions/*`, `/api/admin/subscriptions/*`.
-- All Core Probe & Agent APIs: `/api/clients`, `/api/clients/register`, `/api/clients/v2/rpc`, `/api/nodes`, `/api/recent/:uuid`, `/api/records/*`, `/api/task/ping`, `/api/rpc2`, `/api/public`, `/api/me`, `/api/login`, `/api/logout`, `/api/oauth*`, `/api/admin/client/*` (excluding terminal/file), `/api/admin/ping/*`, `/api/admin/notification/*`, `/api/admin/settings/*`, `/api/admin/database/*`, `/api/admin/sessions/*`, `/api/admin/logs`, `/api/admin/2fa/*`, `/api/admin/oauth2/*`, `/api/admin/download/backup`, `/api/admin/upload/*` (`backup` & `plugin`).
-- All Plugin APIs: `/api/admin/plugin/*`, `/api/plugin/:short/*filepath`, `admin:*Plugin*` RPC2 methods.
+- All Core Probe & Agent APIs: `/api/clients`, `/api/clients/register`, `/api/clients/v2/rpc`, `/api/nodes`, `/api/recent/:uuid`, `/api/records/*`, `/api/task/ping`, `/api/rpc2`, `/api/public`, `/api/me`, `/api/login`, `/api/logout`, `/api/oauth*`, `/api/admin/client/*` (excluding terminal/file), `/api/admin/ping/*`, `/api/admin/notification/*`, `/api/admin/settings/*`, `/api/admin/database/*`, `/api/admin/sessions/*`, `/api/admin/logs`, `/api/admin/2fa/*`, `/api/admin/oauth2/*`, `/api/admin/download/backup`, `/api/admin/upload/*` (`backup`).
