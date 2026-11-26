@@ -212,6 +212,16 @@ export const WorldMapCard: React.FC<{
     });
   };
 
+  const handleCountryLeave = (code: string, e: React.MouseEvent) => {
+    const related = e.relatedTarget;
+    const nextCode =
+      related instanceof Element
+        ? related.closest("[data-country-code]")?.getAttribute("data-country-code")
+        : null;
+    if (nextCode === code) return;
+    setTooltip(null);
+  };
+
   return (
     <div
       ref={containerRef}
@@ -281,6 +291,17 @@ export const WorldMapCard: React.FC<{
           className="h-auto w-full select-none"
           role="img"
           aria-label="World node distribution map"
+          onMouseMove={(e) => {
+            if (compact) return;
+            const target = e.target;
+            if (
+              !(target instanceof Element) ||
+              !target.closest("[data-country-code]")
+            ) {
+              setTooltip((prev) => (prev ? null : prev));
+            }
+          }}
+          onMouseLeave={() => setTooltip(null)}
         >
           <g>
             {features.map((feat, idx) => {
@@ -294,20 +315,30 @@ export const WorldMapCard: React.FC<{
               const d = pathGenerator(feat) || "";
               const displayName =
                 countryData?.country_name || feat.properties?.name || alpha2 || "Unknown";
+              const isInteractive = Boolean(countryData) && !compact;
 
               return (
                 <path
                   key={`${idStr}-${idx}`}
                   d={d}
+                  data-country-code={isInteractive ? alpha2 : undefined}
                   fill={fillColor ?? "var(--hub-map-land)"}
                   fillOpacity={fillColor ? (isSelected ? 0.92 : 0.72) : 1}
                   stroke={isSelected ? "#1D4ED8" : "var(--hub-map-stroke)"}
                   strokeWidth={isSelected ? 1.1 : 0.55}
                   className={
-                    countryData && !compact
+                    isInteractive
                       ? "cursor-pointer transition-opacity duration-150 hover:opacity-90"
                       : "transition-colors duration-150"
                   }
+                  onMouseEnter={(e) => {
+                    if (!countryData || compact) return;
+                    updateTooltipPos(e, {
+                      code: alpha2,
+                      name: displayName,
+                      country: countryData,
+                    });
+                  }}
                   onMouseMove={(e) => {
                     if (!countryData || compact) return;
                     updateTooltipPos(e, {
@@ -315,6 +346,10 @@ export const WorldMapCard: React.FC<{
                       name: displayName,
                       country: countryData,
                     });
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!countryData || compact) return;
+                    handleCountryLeave(alpha2, e);
                   }}
                   onClick={() => {
                     if (!countryData || compact || !alpha2) return;
@@ -359,7 +394,16 @@ export const WorldMapCard: React.FC<{
             return (
               <g
                 key={pin.code}
+                data-country-code={!compact ? pin.code : undefined}
                 className={compact ? "pointer-events-none" : "cursor-pointer"}
+                onMouseEnter={(e) => {
+                  if (compact) return;
+                  updateTooltipPos(e, {
+                    code: pin.code,
+                    name: pin.name,
+                    country: pin.country,
+                  });
+                }}
                 onMouseMove={(e) => {
                   if (compact) return;
                   updateTooltipPos(e, {
@@ -367,6 +411,10 @@ export const WorldMapCard: React.FC<{
                     name: pin.name,
                     country: pin.country,
                   });
+                }}
+                onMouseLeave={(e) => {
+                  if (compact) return;
+                  handleCountryLeave(pin.code, e);
                 }}
                 onClick={(e) => {
                   if (compact) return;

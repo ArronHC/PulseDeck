@@ -676,6 +676,61 @@ func TestChildProcessPermissionAndExecution(t *testing.T) {
 	}
 }
 
+func TestChildProcessSpawnWaitsForStdioBeforeClose(t *testing.T) {
+	command := "printf child"
+	if runtime.GOOS == "windows" {
+		command = "echo child"
+	}
+	jsRuntime, err := New(`
+		async function verify(shellCommand, helperCommand, environment) {
+			const childProcess = require("child_process");
+			for (let iteration = 0; iteration < 20; iteration++) {
+				const result = await new Promise((resolve) => {
+					const child = childProcess.spawn(shellCommand, [], {
+						shell: true,
+						encoding: "utf8",
+					});
+					let output = "";
+					let stdoutEnded = false;
+					child.stdout.on("data", (chunk) => output += String(chunk));
+					child.stdout.on("end", () => { stdoutEnded = true; });
+					child.on("close", (code) => {
+						resolve(code === 0 && stdoutEnded && output.trim() === "child");
+					});
+					child.on("error", () => resolve(false));
+				});
+				if (!result) {
+					return false;
+				}
+			}
+			return new Promise((resolve) => {
+				const child = childProcess.spawn(helperCommand, ["-test.run=^TestNodeChildProcessHelper$"], {
+					env: environment,
+					encoding: "utf8",
+				});
+				let output = "";
+				let stdoutEnded = false;
+				child.stdout.on("data", (chunk) => output += String(chunk));
+				child.stdout.on("end", () => { stdoutEnded = true; });
+				child.on("close", (code) => {
+					resolve(code === 0 && stdoutEnded && output.length === 4096);
+				});
+				child.on("error", () => resolve(false));
+			});
+		}
+	`, Options{
+		NodeJS: true, AllowExec: true, BaseDir: t.TempDir(), Console: io.Discard,
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jsRuntime.Close()
+	if err := jsRuntime.Call("verify", command, os.Args[0], childHelperEnvironment("output")); err != nil {
+		t.Fatalf("spawn close ordering failed: %v", err)
+	}
+}
+
 func TestChildProcessOutputLimitAndExitCode(t *testing.T) {
 	jsRuntime, err := New(`
 		function execFile(command, environment, maxBuffer) {

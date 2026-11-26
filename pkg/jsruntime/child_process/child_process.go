@@ -259,9 +259,11 @@ func (m *Module) spawnChild(vm *moejs.Runtime, command string, arguments []strin
 		return child
 	}
 	_ = native.Set(vm, child, "pid", cmd.Process.Pid)
+	resourceClosed := make(chan struct{})
 	resourceID := m.runtime.AddResource(func() {
 		_ = cmd.Process.Kill()
 		cancel()
+		close(resourceClosed)
 	})
 	if resourceID == 0 {
 		_ = stdin.Close()
@@ -304,8 +306,8 @@ func (m *Module) spawnChild(vm *moejs.Runtime, command string, arguments []strin
 		}
 		return native.From(vm, false), nil
 	}))
-	stdoutDone := m.pipeChildOutput(vm, stdoutReader, stdout, options.encoding)
-	stderrDone := m.pipeChildOutput(vm, stderrReader, stderr, options.encoding)
+	stdoutDone := m.pipeChildOutput(vm, stdoutReader, stdout, options.encoding, resourceClosed)
+	stderrDone := m.pipeChildOutput(vm, stderrReader, stderr, options.encoding, resourceClosed)
 	go func() {
 		// Wait for stdout/stderr pipes to drain into the JS event loop before
 		// Wait closes the pipes and emits exit/close.
@@ -426,7 +428,7 @@ func childCallback(args []moejs.Value) moejs.Value {
 	}
 	return moejs.Undefined()
 }
-func (m *Module) pipeChildOutput(vm *moejs.Runtime, reader io.Reader, stream *engine.Object, encoding string) <-chan struct{} {
+func (m *Module) pipeChildOutput(vm *moejs.Runtime, reader io.Reader, stream *engine.Object, encoding string, closed <-chan struct{}) <-chan struct{} {
 	done := make(chan struct{})
 	push, _ := checkedFunction(native.Get(vm, stream, "push"))
 	setEncoding, _ := checkedFunction(native.Get(vm, stream, "setEncoding"))
@@ -444,8 +446,12 @@ func (m *Module) pipeChildOutput(vm *moejs.Runtime, reader io.Reader, stream *en
 		}) {
 			return false
 		}
-		<-delivered
-		return true
+		select {
+		case <-delivered:
+			return true
+		case <-closed:
+			return false
+		}
 	}
 	go func() {
 		defer close(done)
