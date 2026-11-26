@@ -28,7 +28,68 @@ import (
 const (
 	PagePath = "/install"
 	APIPath  = "/api/install"
+
+	EnvAdminUser   = "PULSEDECK_ADMIN_USER"
+	EnvAdminPass   = "PULSEDECK_ADMIN_PASS"
+	EnvSiteName    = "PULSEDECK_SITENAME"
+	EnvDescription = "PULSEDECK_DESCRIPTION"
+	EnvMetricDSN   = "PULSEDECK_METRIC_DSN"
 )
+
+// CompleteFromEnv performs headless first-run initialization when both
+// PULSEDECK_ADMIN_USER and PULSEDECK_ADMIN_PASS are provided in the environment.
+// Returns (false, nil) when neither variable is set so the interactive install
+// guide runs normally.
+func CompleteFromEnv(ctx context.Context, db *gorm.DB) (bool, error) {
+	username := strings.TrimSpace(os.Getenv(EnvAdminUser))
+	password := os.Getenv(EnvAdminPass)
+	if username == "" && password == "" {
+		return false, nil
+	}
+	if username == "" || password == "" {
+		return false, fmt.Errorf("both %s and %s must be set for headless installation", EnvAdminUser, EnvAdminPass)
+	}
+
+	sitename := strings.TrimSpace(os.Getenv(EnvSiteName))
+	if sitename == "" {
+		sitename = "PulseDeck"
+	}
+	description := strings.TrimSpace(os.Getenv(EnvDescription))
+	if description == "" {
+		description = "All-in-one self-hosted server probe, uptime, and node observability deck."
+	}
+	metricDSN := strings.TrimSpace(os.Getenv(EnvMetricDSN))
+	if metricDSN == "" {
+		metricDSN = "./data/metrics.db"
+	}
+
+	req := completeRequest{
+		Username:    username,
+		Password:    password,
+		Sitename:    sitename,
+		Description: description,
+		MetricDSN:   metricDSN,
+	}
+	if err := validateRequest(&req); err != nil {
+		return false, fmt.Errorf("headless install validation failed: %w", err)
+	}
+	cfg, err := metricConfig(req)
+	if err != nil {
+		return false, fmt.Errorf("headless install metric DSN invalid: %w", err)
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	err = metricstore.TestConnection(pingCtx, cfg)
+	cancel()
+	if err != nil {
+		return false, fmt.Errorf("headless install monitoring database connection failed: %w", err)
+	}
+	ctrl := NewController(db)
+	if err := ctrl.createAccountAndSettings(&req, cfg); err != nil {
+		return false, fmt.Errorf("headless install failed to persist settings: %w", err)
+	}
+	logger.Infof("install", "Headless first-run installation completed for admin user %q", req.Username)
+	return true, nil
+}
 
 type Status struct {
 	State    string `json:"state"`

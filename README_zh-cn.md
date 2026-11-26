@@ -39,15 +39,17 @@ PulseDeck 基于 [Komari](https://github.com/komari-monitor/komari) 深度二开
 
 ## 快速开始
 
-### Docker Compose 一键部署（推荐）
+### Docker Compose 一键部署（推荐：拉取预构建镜像，零本地编译）
 
 ```bash
 git clone https://github.com/ArronHC/PulseDeck.git
 cd PulseDeck
-docker compose up -d --build
+docker compose up -d
 ```
 
-启动后访问 `http://127.0.0.1:25774` 完成首次初始化安装。更多参数（自定义端口、数据卷持久化、容器内启用 `sing-box` / `mihomo` 测试加密节点出口纯净度）请查阅 [DOCKER.md](./DOCKER.md)。
+- 默认拉取双架构预构建镜像 `ghcr.io/arronhc/pulsedeck:latest`，512MB 小内存 VPS 也能 10 秒拉起，无需本地编译。
+- 启动后访问 `http://127.0.0.1:25774` 完成初始化，或在 `docker-compose.yml` 中配置 `PULSEDECK_ADMIN_USER` / `PULSEDECK_ADMIN_PASS` 实现零交互自动初始化。
+- 如需本地源码构建或内嵌 `sing-box` / `mihomo` 代理核心，使用 `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`，详见 [DOCKER.md](./DOCKER.md)。
 
 ### 源码构建运行
 

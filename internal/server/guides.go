@@ -21,6 +21,12 @@ func (a *App) InstallRequired() (bool, error) {
 	return count == 0, nil
 }
 
+// TryHeadlessInstall attempts automatic first-run setup using environment variables
+// (PULSEDECK_ADMIN_USER / PULSEDECK_ADMIN_PASS). Returns (false, nil) when unset.
+func (a *App) TryHeadlessInstall(ctx context.Context) (bool, error) {
+	return installweb.CompleteFromEnv(ctx, dbcore.GetDBInstance())
+}
+
 type DatabaseMigrationRequirement struct {
 	mode    migrationweb.Mode
 	summary migrations.LegacyMonitoringSummary

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"os"
 
@@ -49,13 +50,20 @@ func RunServer() {
 		logger.Fatalf("server", "server startup failed at %q: %v", "detect-first-run-install", err)
 	}
 	if installRequired {
-		completed, err := app.RunInstallGuide()
+		headlessDone, err := app.TryHeadlessInstall(context.Background())
 		if err != nil {
 			_ = app.Shutdown()
-			logger.Fatalf("server", "server startup failed at %q: %v", "run-first-run-install", err)
+			logger.Fatalf("server", "server startup failed at %q: %v", "headless-first-run-install", err)
 		}
-		if !completed {
-			return
+		if !headlessDone {
+			completed, err := app.RunInstallGuide()
+			if err != nil {
+				_ = app.Shutdown()
+				logger.Fatalf("server", "server startup failed at %q: %v", "run-first-run-install", err)
+			}
+			if !completed {
+				return
+			}
 		}
 	}
 

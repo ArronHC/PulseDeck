@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Stage 1: Build the Mobbin-guided React/Vite frontend (web-ui)
+# Stage 1: Build the PulseDeck React/Vite frontend (web-ui)
 FROM node:22-alpine AS frontend-builder
 WORKDIR /src/web-ui
 
@@ -35,24 +35,42 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GIN_MODE=release \
     go build -trimpath \
       -tags "nomsgpack sqlite_omit_load_extension" \
       -ldflags="-s -w -buildid= -X github.com/komari-monitor/komari/utils.CurrentVersion=${VERSION} -X github.com/komari-monitor/komari/utils.VersionHash=${VERSION_HASH}" \
-      -o /out/komari .
+      -o /out/pulsedeck .
 
 # Stage 3: Minimal Alpine runtime
 FROM alpine:3.21
 WORKDIR /app
 
-# Optional: set --build-arg INSTALL_PROXY_CORE=sing-box (or mihomo) to enable
-# through-node IPPure exit checks for VMess/VLESS/Trojan/SS/Hysteria2 nodes.
+# Optional proxy core for through-node IPPure checks on VMess/VLESS/Trojan/SS/Hysteria2:
+#   none     (default) — lightweight image without external proxy core
+#   sing-box — install sing-box from Alpine edge/community
+#   mihomo   — install pinned MetaCubeX/mihomo release binary
 ARG INSTALL_PROXY_CORE=none
+ARG MIHOMO_VERSION=v1.19.12
 ARG TARGETARCH
 
 RUN apk add --no-cache ca-certificates curl tzdata \
- && if [ "$INSTALL_PROXY_CORE" = "sing-box" ]; then \
-      apk add --no-cache sing-box --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing || true; \
-    fi \
- && mkdir -p /app/data
+ && case "${INSTALL_PROXY_CORE}" in \
+      none) ;; \
+      sing-box) \
+        apk add --no-cache sing-box --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community \
+        && sing-box version ;; \
+      mihomo) \
+        case "${TARGETARCH}" in \
+          amd64) MIHOMO_ARCH="amd64-compatible" ;; \
+          arm64) MIHOMO_ARCH="arm64" ;; \
+          *) echo "Unsupported TARGETARCH for mihomo: ${TARGETARCH}" >&2; exit 1 ;; \
+        esac \
+        && curl -fsSL "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-${MIHOMO_ARCH}-${MIHOMO_VERSION}.gz" -o /tmp/mihomo.gz \
+        && gunzip -c /tmp/mihomo.gz > /usr/local/bin/mihomo \
+        && chmod 755 /usr/local/bin/mihomo \
+        && rm -f /tmp/mihomo.gz \
+        && /usr/local/bin/mihomo -v ;; \
+      *) echo "Invalid INSTALL_PROXY_CORE=${INSTALL_PROXY_CORE} (expected none, sing-box, or mihomo)" >&2; exit 1 ;; \
+    esac \
+ && mkdir -p /app/data /app/cache
 
-COPY --from=backend-builder --chmod=755 /out/komari /app/komari
+COPY --from=backend-builder --chmod=755 /out/pulsedeck /app/pulsedeck
 
 ENV GIN_MODE=release
 ENV KOMARI_LISTEN=0.0.0.0:25774
@@ -65,4 +83,4 @@ EXPOSE 25774
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -fsS http://127.0.0.1:25774/ping >/dev/null 2>&1 || curl -fsS http://127.0.0.1:25774/api/install/status >/dev/null 2>&1 || exit 1
 
-CMD ["/app/komari", "server"]
+CMD ["/app/pulsedeck", "server"]

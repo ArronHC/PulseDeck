@@ -1,0 +1,4 @@
+# Build context for Dockerfile.ci only needs the prebuilt multi-arch binaries.
+*
+!komari-linux-amd64
+!komari-linux-arm64
