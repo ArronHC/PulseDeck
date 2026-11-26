@@ -229,10 +229,10 @@ const DefaultProbeView = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
-            服务器探针
+            {t("pulse.servers.title")}
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-            实时监控服务器 CPU、内存、磁盘、网络速率与在线状态，点击卡片查看详情图表
+            {t("pulse.servers.subtitle")}
           </p>
         </div>
 
@@ -242,7 +242,7 @@ const DefaultProbeView = () => {
               to="/admin/servers"
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline transition-colors hover:bg-[var(--hub-canvas)]"
             >
-              <span>管理服务器</span>
+              <span>{t("pulse.servers.manageServers")}</span>
               <ArrowRight className="h-3.5 w-3.5 text-[var(--hub-muted)]" />
             </Link>
           )}
@@ -260,7 +260,7 @@ const DefaultProbeView = () => {
             <Popover.Content width="280px">
               <Flex direction="column" gap="3">
                 <Text size="2" weight="bold">
-                  {t("status_settings", "显示指标")}
+                  {t("status_settings", "Status Settings")}
                 </Text>
                 <Flex direction="column" gap="2">
                   {statusCards.map((card) => (
@@ -306,11 +306,11 @@ const DefaultProbeView = () => {
       {isEmpty ? (
         <HubEmptyState
           icon={Server}
-          title="暂无服务器探针节点"
+          title={t("pulse.servers.emptyTitle")}
           description={
             isAdmin
-              ? "当前尚未接入任何服务器节点，前往管理后台添加探针或启用自动发现批量接入。"
-              : "管理员尚未接入服务器探针节点，登录后可在控制台添加节点。"
+              ? t("pulse.servers.emptyAdminDesc")
+              : t("pulse.servers.emptyGuestDesc")
           }
           action={
             isAdmin ? (
@@ -318,7 +318,7 @@ const DefaultProbeView = () => {
                 to="/admin/servers"
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-xs font-medium text-white no-underline hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
-                <span>前往控制台添加节点</span>
+                <span>{t("pulse.servers.goToAddNodes")}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             ) : (
@@ -327,7 +327,7 @@ const DefaultProbeView = () => {
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline hover:bg-[var(--hub-canvas)]"
               >
                 <LogIn className="h-3.5 w-3.5" />
-                <span>管理员登录</span>
+                <span>{t("pulse.common.adminLogin")}</span>
               </Link>
             )
           }

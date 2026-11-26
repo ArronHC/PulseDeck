@@ -18,7 +18,7 @@ import {
   settingsErrorText,
   settingsQuery,
 } from "@/routeQueries/settings";
-import { SAFE_RAW_RETENTION_DAYS, DSN_PLACEHOLDER, toNumber } from "./metrics/utils";
+import { SAFE_RAW_RETENTION_DAYS, toNumber } from "./metrics/utils";
 import { MetricRollupRetentionCard } from "./metrics/MetricRollupRetentionCard";
 import { MetricRetentionTable } from "./metrics/MetricRetentionTable";
 import { MigrationCard } from "./metrics/MigrationCard";
@@ -94,7 +94,7 @@ export default function MetricsSettings() {
         description={t("settings.metrics.dsn_description")}
         descriptionPlacement="footer"
         defaultValue={String(settings.metric_db_dsn || "")}
-        placeholder={DSN_PLACEHOLDER}
+        placeholder={t("settings.metrics.dsn_placeholder")}
         OnSave={async (value) => {
           await saveMetricSettings({ metric_db_dsn: value.trim() });
         }}

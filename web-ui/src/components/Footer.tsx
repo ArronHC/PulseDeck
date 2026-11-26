@@ -1,5 +1,6 @@
 import { Flex, Text } from "@radix-ui/themes";
 import { useEffect, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
@@ -7,10 +8,11 @@ import { MOTION_DURATION, MOTION_EASE, MOTION_SPRING } from "@/lib/motion";
 import { Skeletonize, skeletonText } from "./ui/skeleton";
 
 const Footer = () => {
+  const { i18n } = useTranslation();
   const formatBuildTime = (isoString: string) => {
     const date = new Date(isoString);
     return (
-      date.toLocaleString("zh-CN", {
+      date.toLocaleString(i18n.resolvedLanguage || i18n.language || "en-US", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",

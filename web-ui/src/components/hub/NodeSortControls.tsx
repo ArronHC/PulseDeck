@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { SubscriptionNode } from "@/types/hub";
 
@@ -16,19 +17,19 @@ const SORT_OPTIONS: Array<{
   value: string;
   sortBy: NodeSortField;
   sortDir: SortDirection;
-  label: string;
+  labelKey: string;
 }> = [
-  { value: "default", sortBy: "default", sortDir: "asc", label: "默认排序" },
-  { value: "latency:asc", sortBy: "latency", sortDir: "asc", label: "延迟从低到高" },
-  { value: "latency:desc", sortBy: "latency", sortDir: "desc", label: "延迟从高到低" },
-  { value: "download:desc", sortBy: "download", sortDir: "desc", label: "下载速度从高到低" },
-  { value: "download:asc", sortBy: "download", sortDir: "asc", label: "下载速度从低到高" },
-  { value: "fraud_score:asc", sortBy: "fraud_score", sortDir: "asc", label: "纯净度评分 (低→高)" },
-  { value: "fraud_score:desc", sortBy: "fraud_score", sortDir: "desc", label: "纯净度评分 (高→低)" },
-  { value: "country:asc", sortBy: "country", sortDir: "asc", label: "地区 (A→Z)" },
-  { value: "country:desc", sortBy: "country", sortDir: "desc", label: "地区 (Z→A)" },
-  { value: "name:asc", sortBy: "name", sortDir: "asc", label: "名称 (A→Z)" },
-  { value: "name:desc", sortBy: "name", sortDir: "desc", label: "名称 (Z→A)" },
+  { value: "default", sortBy: "default", sortDir: "asc", labelKey: "pulse.sort.default" },
+  { value: "latency:asc", sortBy: "latency", sortDir: "asc", labelKey: "pulse.sort.latencyAsc" },
+  { value: "latency:desc", sortBy: "latency", sortDir: "desc", labelKey: "pulse.sort.latencyDesc" },
+  { value: "download:desc", sortBy: "download", sortDir: "desc", labelKey: "pulse.sort.downloadDesc" },
+  { value: "download:asc", sortBy: "download", sortDir: "asc", labelKey: "pulse.sort.downloadAsc" },
+  { value: "fraud_score:asc", sortBy: "fraud_score", sortDir: "asc", labelKey: "pulse.sort.fraudAsc" },
+  { value: "fraud_score:desc", sortBy: "fraud_score", sortDir: "desc", labelKey: "pulse.sort.fraudDesc" },
+  { value: "country:asc", sortBy: "country", sortDir: "asc", labelKey: "pulse.sort.countryAsc" },
+  { value: "country:desc", sortBy: "country", sortDir: "desc", labelKey: "pulse.sort.countryDesc" },
+  { value: "name:asc", sortBy: "name", sortDir: "asc", labelKey: "pulse.sort.nameAsc" },
+  { value: "name:desc", sortBy: "name", sortDir: "desc", labelKey: "pulse.sort.nameDesc" },
 ];
 
 export function defaultDirForField(field: NodeSortField): SortDirection {
@@ -199,20 +200,23 @@ export const NodeSortSelect: React.FC<{
   sortBy: NodeSortField;
   sortDir: SortDirection;
   onChange: (sortBy: NodeSortField, sortDir: SortDirection) => void;
-}> = ({ sortBy, sortDir, onChange }) => (
-  <select
-    aria-label="节点排序方式"
-    value={encodeSortValue(sortBy, sortDir)}
-    onChange={(e) => {
-      const next = decodeSortValue(e.target.value);
-      onChange(next.sortBy, next.sortDir);
-    }}
-    className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs text-[var(--hub-ink)]"
-  >
-    {SORT_OPTIONS.map((opt) => (
-      <option key={opt.value} value={opt.value}>
-        {opt.label}
-      </option>
-    ))}
-  </select>
-);
+}> = ({ sortBy, sortDir, onChange }) => {
+  const { t } = useTranslation();
+  return (
+    <select
+      aria-label={t("pulse.sort.ariaLabel")}
+      value={encodeSortValue(sortBy, sortDir)}
+      onChange={(e) => {
+        const next = decodeSortValue(e.target.value);
+        onChange(next.sortBy, next.sortDir);
+      }}
+      className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs text-[var(--hub-ink)]"
+    >
+      {SORT_OPTIONS.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {t(opt.labelKey)}
+        </option>
+      ))}
+    </select>
+  );
+};

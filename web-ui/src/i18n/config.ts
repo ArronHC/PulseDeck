@@ -6,7 +6,7 @@ import {
   writeLanguageCookie,
 } from "@/utils/language";
 
-export type SupportedLocale = "en-US" | "id-ID" | "ja-JP" | "zh-CN" | "zh-TW";
+export type SupportedLocale = "en-US" | "zh-CN";
 
 export const DEFAULT_LOCALE: SupportedLocale = "en-US";
 
@@ -14,11 +14,8 @@ export const SUPPORTED_LANGUAGES: ReadonlyArray<{
   code: SupportedLocale;
   name: string;
 }> = [
-  { code: "en-US", name: "English" },
-  { code: "id-ID", name: "Bahasa Indonesia" },
-  { code: "ja-JP", name: "日本語" },
   { code: "zh-CN", name: "简体中文" },
-  { code: "zh-TW", name: "繁體中文" },
+  { code: "en-US", name: "English" },
 ];
 
 type TranslationDict = Record<string, unknown>;
@@ -28,10 +25,7 @@ const LOCALE_LOADERS: Record<
   () => Promise<{ default: TranslationDict }>
 > = {
   "en-US": () => import("./locales/en.json"),
-  "id-ID": () => import("./locales/id_ID.json"),
-  "ja-JP": () => import("./locales/ja_JP.json"),
   "zh-CN": () => import("./locales/zh_CN.json"),
-  "zh-TW": () => import("./locales/zh_TW.json"),
 };
 
 const localeCache = new Map<SupportedLocale, Promise<TranslationDict>>();
@@ -42,22 +36,8 @@ export function resolveSupportedLocale(
   const normalized = normalizeLanguage(language).toLowerCase();
   if (!normalized) return DEFAULT_LOCALE;
 
-  if (
-    normalized === "zh-tw" ||
-    normalized === "zh-hk" ||
-    normalized === "zh-mo" ||
-    normalized.startsWith("zh-hant")
-  ) {
-    return "zh-TW";
-  }
   if (normalized === "zh" || normalized.startsWith("zh-")) {
     return "zh-CN";
-  }
-  if (normalized === "ja" || normalized.startsWith("ja-")) {
-    return "ja-JP";
-  }
-  if (normalized === "id" || normalized.startsWith("id-")) {
-    return "id-ID";
   }
   if (normalized === "en" || normalized.startsWith("en-")) {
     return "en-US";
@@ -83,10 +63,6 @@ function detectInitialLocale(): SupportedLocale {
       if (
         normalized === "zh" ||
         normalized.startsWith("zh-") ||
-        normalized === "ja" ||
-        normalized.startsWith("ja-") ||
-        normalized === "id" ||
-        normalized.startsWith("id-") ||
         normalized === "en" ||
         normalized.startsWith("en-")
       ) {
@@ -122,10 +98,13 @@ async function ensureLocaleRegistered(locale: SupportedLocale): Promise<void> {
   i18next.addResourceBundle(locale, "translation", bundle, true, true);
 }
 
-writeLanguageCookie(readStoredLanguage());
+const initialStored = readStoredLanguage();
+if (initialStored) {
+  writeLanguageCookie(resolveSupportedLocale(initialStored));
+}
 
 i18next.on("languageChanged", (language) => {
-  writeLanguageCookie(language);
+  writeLanguageCookie(resolveSupportedLocale(language));
 });
 
 const originalChangeLanguage = i18next.changeLanguage.bind(i18next);

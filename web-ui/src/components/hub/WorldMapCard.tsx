@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
@@ -122,6 +123,7 @@ export const WorldMapCard: React.FC<{
   compact = false,
   onClickCompact,
 }) => {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
@@ -236,10 +238,10 @@ export const WorldMapCard: React.FC<{
           <div className="flex items-center gap-2">
             <div>
               <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                全球节点分布
+                {t("pulse.map.title")}
               </h3>
               <p className="text-xs text-[var(--hub-muted)]">
-                悬停查看延迟与 IPPure 纯净度 · 点击地区筛选节点
+                {t("pulse.map.subtitle")}
               </p>
             </div>
             {selectedCountry && (
@@ -267,7 +269,7 @@ export const WorldMapCard: React.FC<{
                     : "text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
                 }`}
               >
-                延迟分布
+                {t("pulse.map.modeLatency")}
               </button>
               <button
                 type="button"
@@ -278,7 +280,7 @@ export const WorldMapCard: React.FC<{
                     : "text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
                 }`}
               >
-                IP 纯净度
+                {t("pulse.map.modePurity")}
               </button>
             </div>
           )}
@@ -290,7 +292,7 @@ export const WorldMapCard: React.FC<{
           viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
           className="h-auto w-full select-none"
           role="img"
-          aria-label="World node distribution map"
+          aria-label={t("pulse.map.ariaLabel")}
           onMouseMove={(e) => {
             if (compact) return;
             const target = e.target;
@@ -451,39 +453,39 @@ export const WorldMapCard: React.FC<{
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  ≤ 80ms 极速
+                  {t("pulse.map.legendFast")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-blue-500" />
-                  81–180ms 良好
+                  {t("pulse.map.legendGood")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  &gt; 180ms 较高
+                  {t("pulse.map.legendHigh")}
                 </span>
               </div>
             ) : (
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  0–25 极纯净
+                  {t("pulse.map.legendPure")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-blue-500" />
-                  26–50 低风险
+                  {t("pulse.map.legendLowRisk")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  51–75 中风险
+                  {t("pulse.map.legendMedRisk")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-rose-500" />
-                  76–100 高风险
+                  {t("pulse.map.legendHighRisk")}
                 </span>
               </div>
             )}
             <span className="font-mono tabular-nums">
-              {countries.length} 个国家/地区
+              {t("pulse.map.countryCount", { count: countries.length })}
             </span>
           </div>
         )}
@@ -506,18 +508,18 @@ export const WorldMapCard: React.FC<{
                 <span>{tooltip.name}</span>
               </span>
               <span className="font-mono tabular-nums text-[11px] text-zinc-400">
-                {tooltip.country.node_count} 节点
+                {t("pulse.map.nodeCount", { count: tooltip.country.node_count })}
               </span>
             </div>
             <div className="mt-1.5 space-y-1 text-[11px]">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-zinc-400">最低延迟</span>
+                <span className="text-zinc-400">{t("pulse.map.minLatency")}</span>
                 <span className="font-mono tabular-nums font-medium text-emerald-400">
                   {formatLatency(tooltip.country.min_latency_ms)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <span className="text-zinc-400">IPPure 均分</span>
+                <span className="text-zinc-400">{t("pulse.map.avgPurity")}</span>
                 <span className="flex items-center gap-1.5 font-mono tabular-nums font-medium">
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
@@ -528,11 +530,11 @@ export const WorldMapCard: React.FC<{
                     ? `${Math.round(tooltip.country.avg_fraud_score)} (${
                         getFraudTier(tooltip.country.avg_fraud_score).shortLabel
                       })`
-                    : "未检测"}
+                    : t("pulse.map.untested")}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <span className="text-zinc-400">住宅原生节点</span>
+                <span className="text-zinc-400">{t("pulse.map.residentialNodes")}</span>
                 <span className="font-mono tabular-nums text-zinc-200">
                   {tooltip.country.residential_count}
                 </span>

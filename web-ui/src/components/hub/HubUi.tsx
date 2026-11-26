@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import type { HealthStatus, UptimeHeartbeat } from "@/types/hub";
 import { formatLatency } from "@/lib/hubApi";
@@ -42,23 +43,30 @@ export function HealthPill({
   onClick?: () => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const config =
     status === "outage"
       ? {
-          text: alerts > 0 ? `${alerts} 项异常中断` : "部分服务中断",
+          text:
+            alerts > 0
+              ? t("pulse.health.outageCount", { count: alerts })
+              : t("pulse.health.outage"),
           cls: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/60 dark:text-rose-300",
           dot: "bg-rose-500",
           Icon: AlertCircle,
         }
       : status === "degraded"
         ? {
-            text: alerts > 0 ? `${alerts} 项告警` : "性能降级",
+            text:
+              alerts > 0
+                ? t("pulse.health.degradedCount", { count: alerts })
+                : t("pulse.health.degraded"),
             cls: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/60 dark:text-amber-300",
             dot: "bg-amber-500",
             Icon: AlertTriangle,
           }
         : {
-            text: "全部系统正常",
+            text: t("pulse.health.operational"),
             cls: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/60 dark:text-emerald-300",
             dot: "bg-emerald-500",
             Icon: CheckCircle2,
@@ -123,6 +131,7 @@ export function HeartbeatStrip({
   slots?: number;
   heightClass?: string;
 }) {
+  const { t } = useTranslation();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const items: Array<{
@@ -206,10 +215,10 @@ export function HeartbeatStrip({
                 }`}
               />
               {hoveredItem.status === 1
-                ? "运行正常"
+                ? t("pulse.health.beatUp")
                 : hoveredItem.status === 0
-                  ? "服务不可用"
-                  : "性能降级"}
+                  ? t("pulse.health.beatDown")
+                  : t("pulse.health.beatDegraded")}
             </span>
             <span className="font-mono tabular-nums text-zinc-300">
               {formatLatency(hoveredItem.latency_ms)}

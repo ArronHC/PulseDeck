@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   Bell,
@@ -33,32 +34,32 @@ import LanguageSwitch from "@/components/Language";
 
 interface NavItem {
   key: string;
-  label: string;
+  labelKey: string;
   to: string;
   icon: React.ComponentType<{ className?: string }>;
   match?: (pathname: string) => boolean;
 }
 
 interface NavSection {
-  title: string;
+  titleKey: string;
   items: NavItem[];
 }
 
 const NOTIFICATION_TABS = [
-  { label: "通知渠道", to: "/admin/notification/channels" },
-  { label: "离线告警", to: "/admin/notification/offline" },
-  { label: "通用告警", to: "/admin/notification/general" },
+  { labelKey: "pulse.adminShell.notifChannels", to: "/admin/notification/channels" },
+  { labelKey: "pulse.adminShell.notifOffline", to: "/admin/notification/offline" },
+  { labelKey: "pulse.adminShell.notifGeneral", to: "/admin/notification/general" },
 ];
 
 export const PULSE_ONBOARDING_EVENT = "pulsedeck:open-onboarding";
 
 const STATIC_SECTIONS: NavSection[] = [
   {
-    title: "总览",
+    titleKey: "pulse.adminShell.sectionOverview",
     items: [
       {
         key: "overview",
-        label: "控制台概览",
+        labelKey: "pulse.adminShell.itemOverview",
         to: "/admin/overview",
         icon: LayoutDashboard,
         match: (p) => p === "/admin/overview" || p === "/admin",
@@ -66,25 +67,25 @@ const STATIC_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "资产与服务",
+    titleKey: "pulse.adminShell.sectionAssets",
     items: [
       {
         key: "servers",
-        label: "服务器探针",
+        labelKey: "pulse.adminShell.itemServers",
         to: "/admin/servers",
         icon: Server,
         match: (p) => p.startsWith("/admin/servers"),
       },
       {
         key: "uptime",
-        label: "服务状态监控",
+        labelKey: "pulse.adminShell.itemUptime",
         to: "/admin/uptime",
         icon: Activity,
         match: (p) => p.startsWith("/admin/uptime"),
       },
       {
         key: "subscriptions",
-        label: "订阅与节点",
+        labelKey: "pulse.adminShell.itemSubscriptions",
         to: "/admin/subscriptions",
         icon: Globe,
         match: (p) => p.startsWith("/admin/subscriptions"),
@@ -92,32 +93,32 @@ const STATIC_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "运维与告警",
+    titleKey: "pulse.adminShell.sectionOps",
     items: [
       {
         key: "ping",
-        label: "延迟监测 (Ping)",
+        labelKey: "pulse.adminShell.itemPing",
         to: "/admin/ping",
         icon: Radio,
         match: (p) => p.startsWith("/admin/ping"),
       },
       {
         key: "exec",
-        label: "远程执行",
+        labelKey: "pulse.adminShell.itemExec",
         to: "/admin/exec",
         icon: TerminalSquare,
         match: (p) => p.startsWith("/admin/exec"),
       },
       {
         key: "notification",
-        label: "通知与告警",
+        labelKey: "pulse.adminShell.itemNotification",
         to: "/admin/notification/channels",
         icon: Bell,
         match: (p) => p.startsWith("/admin/notification"),
       },
       {
         key: "logs",
-        label: "审计日志",
+        labelKey: "pulse.adminShell.itemLogs",
         to: "/admin/logs",
         icon: FileText,
         match: (p) => p.startsWith("/admin/logs"),
@@ -125,32 +126,32 @@ const STATIC_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "系统",
+    titleKey: "pulse.adminShell.sectionSystem",
     items: [
       {
         key: "settings",
-        label: "系统设置",
+        labelKey: "pulse.adminShell.itemSettings",
         to: "/admin/settings/site",
         icon: Settings,
         match: (p) => p.startsWith("/admin/settings"),
       },
       {
         key: "account",
-        label: "账户与安全",
+        labelKey: "pulse.adminShell.itemAccount",
         to: "/admin/account",
         icon: ShieldCheck,
         match: (p) => p.startsWith("/admin/account"),
       },
       {
         key: "sessions",
-        label: "登录会话",
+        labelKey: "pulse.adminShell.itemSessions",
         to: "/admin/sessions",
         icon: Users,
         match: (p) => p.startsWith("/admin/sessions"),
       },
       {
         key: "about",
-        label: "关于",
+        labelKey: "pulse.adminShell.itemAbout",
         to: "/admin/about",
         icon: Info,
         match: (p) => p.startsWith("/admin/about"),
@@ -166,6 +167,7 @@ const contentSectionKey = (pathname: string) => {
 };
 
 export default function PulseAdminShell({ content }: { content: ReactNode }) {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const { account } = useAccount();
@@ -193,11 +195,11 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
   };
 
   const renderSidebarContent = () => (
-    <nav aria-label="控制台导航" className="space-y-5 px-3 py-4">
+    <nav aria-label={t("pulse.adminShell.sidebarAria")} className="space-y-5 px-3 py-4">
       {STATIC_SECTIONS.map((section) => (
-        <div key={section.title}>
+        <div key={section.titleKey}>
           <div className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-wider text-[var(--hub-muted)] uppercase">
-            {section.title}
+            {t(section.titleKey)}
           </div>
           <div className="space-y-0.5">
             {section.items.map((item) => {
@@ -214,7 +216,7 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
               return (
                 <Link key={item.key} to={item.to} className={cls}>
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate">{t(item.labelKey)}</span>
                 </Link>
               );
             })}
@@ -233,7 +235,7 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--hub-border)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] lg:hidden"
-            aria-label="切换菜单"
+            aria-label={t("pulse.adminShell.toggleMenu")}
           >
             {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
@@ -249,7 +251,7 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
           </Link>
 
           <span className="rounded-md border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2 py-0.5 text-[11px] font-medium text-[var(--hub-muted)]">
-            控制台
+            {t("pulse.nav.console")}
           </span>
         </div>
 
@@ -260,15 +262,15 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs font-medium text-[var(--hub-ink)] transition-colors hover:border-zinc-300 dark:hover:border-zinc-700"
           >
             <Compass className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-            <span className="hidden sm:inline">新手引导</span>
+            <span className="hidden sm:inline">{t("pulse.adminShell.onboardingBtn")}</span>
           </button>
 
           <Link
             to="/"
             className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] no-underline transition-colors hover:bg-[var(--hub-canvas)]"
           >
-            <span className="hidden sm:inline">返回前台</span>
-            <span className="sm:hidden">前台</span>
+            <span className="hidden sm:inline">{t("pulse.adminShell.backToFrontend")}</span>
+            <span className="sm:hidden">{t("pulse.adminShell.frontendShort")}</span>
             <ExternalLink className="h-3 w-3 text-[var(--hub-muted)]" />
           </Link>
 
@@ -276,8 +278,8 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
             type="button"
             onClick={() => setAppearance(isDark ? "light" : "dark")}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] text-[var(--hub-muted)] transition-colors hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)]"
-            title={isDark ? "切换到亮色模式" : "切换到暗色模式"}
-            aria-label="Toggle theme"
+            title={isDark ? t("pulse.nav.switchToLight") : t("pulse.nav.switchToDark")}
+            aria-label={t("pulse.nav.toggleTheme")}
           >
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
@@ -299,8 +301,8 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
             <button
               type="button"
               onClick={() => window.open("/api/logout", "_self")}
-              title="退出登录"
-              aria-label="退出登录"
+              title={t("pulse.adminShell.logout")}
+              aria-label={t("pulse.adminShell.logout")}
               className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2 text-xs text-[var(--hub-muted)] transition-colors hover:border-rose-300 hover:text-rose-600 dark:hover:border-rose-900 dark:hover:text-rose-400"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -336,7 +338,7 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
           <div className="mx-auto w-full max-w-[1320px]">
             {!isHttps && (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
-                当前未通过 HTTPS 访问控制台，建议在生产环境启用 TLS 反向代理以保护管理员凭证与 Agent 通信。
+                {t("pulse.adminShell.httpsWarning")}
               </div>
             )}
 
@@ -354,7 +356,7 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
                           : "border border-[var(--hub-border)] bg-[var(--hub-surface)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
                       }`}
                     >
-                      {tab.label}
+                      {t(tab.labelKey)}
                     </Link>
                   );
                 })}

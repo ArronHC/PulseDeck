@@ -28,9 +28,29 @@ export const normalizeLanguage = (language?: string | null) => {
   return normalized;
 };
 
+const readCookieLanguage = () => {
+  if (typeof document === "undefined" || !document.cookie) return "";
+  const prefix = `${LANGUAGE_COOKIE_KEY}=`;
+  for (const part of document.cookie.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed.startsWith(prefix)) continue;
+    const rawValue = trimmed.slice(prefix.length);
+    try {
+      return normalizeLanguage(decodeURIComponent(rawValue));
+    } catch {
+      return normalizeLanguage(rawValue);
+    }
+  }
+  return "";
+};
+
 export const readStoredLanguage = () => {
   if (typeof window === "undefined") return "";
-  return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
+  const fromStorage = normalizeLanguage(
+    window.localStorage.getItem(LANGUAGE_STORAGE_KEY),
+  );
+  if (fromStorage) return fromStorage;
+  return readCookieLanguage();
 };
 
 export const writeLanguageCookie = (language?: string | null) => {

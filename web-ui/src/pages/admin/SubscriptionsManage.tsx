@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   AlertTriangle,
@@ -66,11 +67,11 @@ type SpeedTestModeOption =
   | "server_download"
   | "server_tcp";
 
-const SPEED_TEST_MODES: Array<{ value: SpeedTestModeOption; label: string }> = [
-  { value: "client", label: "本机网络延迟 (用户环境)" },
-  { value: "server_http", label: "服务端代理延迟 (流式)" },
-  { value: "server_download", label: "服务端下载测速 (流式)" },
-  { value: "server_tcp", label: "服务端 TCP 连通 (流式)" },
+const SPEED_TEST_MODES: Array<{ value: SpeedTestModeOption; labelKey: string }> = [
+  { value: "client", labelKey: "pulse.adminSubs.modeClient" },
+  { value: "server_http", labelKey: "pulse.adminSubs.modeServerHttp" },
+  { value: "server_download", labelKey: "pulse.adminSubs.modeServerDownload" },
+  { value: "server_tcp", labelKey: "pulse.adminSubs.modeServerTcp" },
 ];
 
 interface SpeedTestProgress {
@@ -82,6 +83,7 @@ interface SpeedTestProgress {
 }
 
 export default function SubscriptionsManagePage() {
+  const { t } = useTranslation();
   const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
   const [nodes, setNodes] = useState<SubscriptionNode[]>([]);
   const [ippureSelf, setIppureSelf] = useState<IPPureInfo | null>(null);
@@ -279,15 +281,15 @@ export default function SubscriptionsManagePage() {
   const handleSaveSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subForm.name.trim()) {
-      toast.error("请输入订阅或分组名称");
+      toast.error(t("pulse.adminSubs.nameRequired"));
       return;
     }
     if (!editingSub && subMode === "url" && !subForm.url.trim()) {
-      toast.error("请输入订阅链接 URL");
+      toast.error(t("pulse.adminSubs.urlRequired"));
       return;
     }
     if (!editingSub && subMode === "manual" && !subForm.raw_content.trim()) {
-      toast.error("请粘贴节点链接 (每行一条)");
+      toast.error(t("pulse.adminSubs.nodesRequired"));
       return;
     }
     setSavingSub(true);
@@ -306,7 +308,7 @@ export default function SubscriptionsManagePage() {
           expire_alert_days: subForm.expire_alert_days,
           enabled: subForm.enabled,
         });
-        toast.success("已更新订阅配置");
+        toast.success(t("pulse.adminSubs.subUpdated"));
       } else {
         await createSubscription({
           name: subForm.name.trim(),
@@ -317,12 +319,12 @@ export default function SubscriptionsManagePage() {
           auto_purity_hours: subForm.auto_purity_hours,
           expire_alert_days: subForm.expire_alert_days,
         });
-        toast.success("已添加订阅并解析节点");
+        toast.success(t("pulse.adminSubs.subAdded"));
       }
       setSubModalOpen(false);
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "保存失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.common.saveFailed"));
     } finally {
       setSavingSub(false);
     }
@@ -333,10 +335,10 @@ export default function SubscriptionsManagePage() {
     try {
       const urlSubs = subscriptions.filter((s) => s.source_type === "url" && s.enabled);
       await Promise.all(urlSubs.map((s) => refreshSubscription(s.id)));
-      toast.success(`已刷新 ${urlSubs.length} 个订阅`);
+      toast.success(t("pulse.adminSubs.refreshedAll", { count: urlSubs.length }));
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "刷新订阅失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminSubs.refreshAllFailed"));
     } finally {
       setBusyGlobal(null);
     }
@@ -363,14 +365,14 @@ export default function SubscriptionsManagePage() {
       return node.enabled;
     });
     if (targets.length === 0) {
-      toast.info("没有可测速的节点");
+      toast.info(t("pulse.adminSubs.noNodesToTest"));
       return;
     }
 
     const controller = new AbortController();
     speedAbortRef.current = controller;
-    const modeLabel =
-      SPEED_TEST_MODES.find((m) => m.value === speedMode)?.label || "测速";
+    const matchedMode = SPEED_TEST_MODES.find((m) => m.value === speedMode);
+    const modeLabel = matchedMode ? t(matchedMode.labelKey) : t("pulse.adminSubs.speedtestLabel");
 
     setSpeedProgress({
       completed: 0,
@@ -513,7 +515,7 @@ export default function SubscriptionsManagePage() {
               });
             },
             onError: (ev) => {
-              toast.error(ev.message || "流式测速出现错误");
+              toast.error(ev.message || t("pulse.adminSubs.streamError"));
             },
             onDone: (ev) => {
               completed = ev.completed ?? completed;
@@ -525,20 +527,20 @@ export default function SubscriptionsManagePage() {
       }
 
       if (controller.signal.aborted) {
-        toast.info(`已停止测速 (${completed}/${totalCount}，可用 ${okCount})`);
+        toast.info(t("pulse.adminSubs.speedStopped", { completed, total: totalCount, ok: okCount }));
       } else if (reportFailed) {
-        toast.warning("测速已完成，但部分结果同步保存失败");
+        toast.warning(t("pulse.adminSubs.speedPartialSaveWarn"));
       } else {
-        toast.success(`测速完成：可用 ${okCount} / 共 ${totalCount} 节点`);
+        toast.success(t("pulse.adminSubs.speedDone", { ok: okCount, total: totalCount }));
       }
     } catch (err) {
       if (
         controller.signal.aborted ||
         (err instanceof DOMException && err.name === "AbortError")
       ) {
-        toast.info(`已停止测速 (${completed}/${totalCount}，可用 ${okCount})`);
+        toast.info(t("pulse.adminSubs.speedStopped", { completed, total: totalCount, ok: okCount }));
       } else {
-        toast.error(err instanceof Error ? err.message : "测速失败");
+        toast.error(err instanceof Error ? err.message : t("pulse.adminSubs.speedFailed"));
       }
     } finally {
       speedAbortRef.current = null;
@@ -553,10 +555,10 @@ export default function SubscriptionsManagePage() {
       await testSubscriptionPurity({
         subscription_id: subscriptionId,
       });
-      toast.success("IPPure 纯净度检测已完成");
+      toast.success(t("pulse.adminSubs.purityBatchDone"));
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "纯净度检测失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminSubs.purityBatchFailed"));
     } finally {
       setBusyGlobal(null);
     }
@@ -572,9 +574,9 @@ export default function SubscriptionsManagePage() {
       if (!proxyCheckUrl.trim()) {
         setIppureSelf(res);
       }
-      toast.success("IPPure 检测完成");
+      toast.success(t("pulse.adminSubs.purityCheckDone"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "IPPure 请求失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminSubs.purityCheckFailed"));
     } finally {
       setCheckingPurity(false);
     }
@@ -603,11 +605,11 @@ export default function SubscriptionsManagePage() {
         ...(latNum !== undefined && !Number.isNaN(latNum) ? { lat: latNum } : {}),
         ...(lngNum !== undefined && !Number.isNaN(lngNum) ? { lng: lngNum } : {}),
       });
-      toast.success("节点归属地信息已更新");
+      toast.success(t("pulse.adminSubs.geoUpdated"));
       setEditingNode(null);
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "更新失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.common.updateFailed"));
     } finally {
       setSavingNodeGeo(false);
     }
@@ -621,10 +623,10 @@ export default function SubscriptionsManagePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
-            订阅与节点管理
+            {t("pulse.adminSubs.title")}
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-            导入机场订阅与手动节点池，执行批量延迟测速、IPPure 纯净度探测与地区坐标修正
+            {t("pulse.adminSubs.subtitle")}
           </p>
         </div>
 
@@ -636,7 +638,7 @@ export default function SubscriptionsManagePage() {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)]"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>刷新</span>
+            <span>{t("pulse.common.refresh")}</span>
           </button>
 
           <button
@@ -648,11 +650,11 @@ export default function SubscriptionsManagePage() {
             <RefreshCw
               className={`h-3.5 w-3.5 ${busyGlobal === "refresh" ? "animate-spin" : ""}`}
             />
-            <span>刷新全部订阅</span>
+            <span>{t("pulse.adminSubs.refreshAllBtn")}</span>
           </button>
 
           <select
-            aria-label="测速模式"
+            aria-label={t("pulse.adminSubs.speedModeAria")}
             value={speedMode}
             disabled={speedTesting}
             onChange={(e) => setSpeedMode(e.target.value as SpeedTestModeOption)}
@@ -660,7 +662,7 @@ export default function SubscriptionsManagePage() {
           >
             {SPEED_TEST_MODES.map((m) => (
               <option key={m.value} value={m.value}>
-                {m.label}
+                {t(m.labelKey)}
               </option>
             ))}
           </select>
@@ -672,7 +674,7 @@ export default function SubscriptionsManagePage() {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-2.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-900/60"
             >
               <Square className="h-3 w-3 fill-current" />
-              <span>停止测速</span>
+              <span>{t("pulse.adminSubs.stopTestBtn")}</span>
             </button>
           ) : (
             <button
@@ -682,7 +684,7 @@ export default function SubscriptionsManagePage() {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
             >
               <Zap className="h-3.5 w-3.5 text-blue-600" />
-              <span>{speedMode === "client" ? "本机批量测速" : "批量测速"}</span>
+              <span>{speedMode === "client" ? t("pulse.adminSubs.localBatchTestBtn") : t("pulse.adminSubs.batchTestBtn")}</span>
             </button>
           )}
 
@@ -693,7 +695,7 @@ export default function SubscriptionsManagePage() {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-            <span>{busyGlobal === "purity" ? "检测中..." : "批量测纯净度"}</span>
+            <span>{busyGlobal === "purity" ? t("pulse.adminSubs.checking") : t("pulse.adminSubs.batchPurityBtn")}</span>
           </button>
 
           <button
@@ -702,7 +704,7 @@ export default function SubscriptionsManagePage() {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>添加订阅/节点</span>
+            <span>{t("pulse.adminSubs.addSubBtn")}</span>
           </button>
         </div>
       </div>
@@ -714,10 +716,10 @@ export default function SubscriptionsManagePage() {
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
               <span>
-                服务端代理核心就绪：
+                {t("pulse.adminSubs.proxyCoreReady")}
                 {capabilities.proxy_cores?.length
                   ? capabilities.proxy_cores.join(", ")
-                  : "已安装"}
+                  : t("pulse.adminSubs.installed")}
               </span>
             </span>
           </div>
@@ -725,7 +727,7 @@ export default function SubscriptionsManagePage() {
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/90 px-3.5 py-2.5 text-xs text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/50 dark:text-amber-300">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <span>
-              当前服务端未安装 mihomo / sing-box 代理核心，服务端代理延迟/下载测速将回退为 TCP 连通性测试；可使用 full 镜像开箱即用。
+              {t("pulse.adminSubs.proxyCoreMissing")}
             </span>
           </div>
         ))}
@@ -756,7 +758,7 @@ export default function SubscriptionsManagePage() {
                       </span>
                       {!sub.enabled && (
                         <span className="rounded bg-zinc-200 px-1.5 py-0 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                          停用
+                          {t("pulse.common.disabledShort")}
                         </span>
                       )}
                     </div>
@@ -783,10 +785,13 @@ export default function SubscriptionsManagePage() {
                     <span>
                       {sub.total > 0
                         ? `${formatBytes(used)} / ${formatBytes(sub.total)} (${pct.toFixed(1)}%)`
-                        : "手动节点池"}
+                        : t("pulse.subscriptions.manualPool")}
                     </span>
                     <span>
-                      可用 {sub.available_count} / {sub.node_count}
+                      {t("pulse.subscriptions.availableCount", {
+                        avail: sub.available_count,
+                        total: sub.node_count,
+                      })}
                     </span>
                   </div>
                   <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
@@ -801,17 +806,17 @@ export default function SubscriptionsManagePage() {
                   <div className="mt-2.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
                     {autoSpeedHours > 0 && (
                       <span className="rounded border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-1.5 py-0.5 text-[var(--hub-muted)]">
-                        自动测速 {autoSpeedHours}h
+                        {t("pulse.adminSubs.autoSpeedBadge", { hours: autoSpeedHours })}
                       </span>
                     )}
                     {autoPurityHours > 0 && (
                       <span className="rounded border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-1.5 py-0.5 text-[var(--hub-muted)]">
-                        纯净度 {autoPurityHours}h
+                        {t("pulse.adminSubs.autoPurityBadge", { hours: autoPurityHours })}
                       </span>
                     )}
                     {expireAlertDays > 0 && (
                       <span className="rounded border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-1.5 py-0.5 text-[var(--hub-muted)]">
-                        到期告警 {expireAlertDays}d
+                        {t("pulse.adminSubs.expireAlertBadge", { days: expireAlertDays })}
                       </span>
                     )}
                   </div>
@@ -819,20 +824,20 @@ export default function SubscriptionsManagePage() {
 
                 {sub.last_error && (
                   <div className="mt-2 truncate text-[11px] text-rose-500">
-                    同步错误: {sub.last_error}
+                    {t("pulse.subscriptions.syncError", { error: sub.last_error })}
                   </div>
                 )}
 
                 <div className="mt-3 flex items-center justify-between border-t border-[var(--hub-border)] pt-2.5 text-[11px] text-[var(--hub-muted)]">
                   <span className="font-mono tabular-nums">
-                    同步于 {formatRelativeTime(sub.last_synced_at)}
+                    {t("pulse.subscriptions.syncedAt", { time: formatRelativeTime(sub.last_synced_at) })}
                   </span>
 
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => openEditSubModal(sub)}
-                      title="编辑订阅"
+                      title={t("pulse.adminSubs.editSubTitle")}
                       className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)]"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -843,15 +848,15 @@ export default function SubscriptionsManagePage() {
                         onClick={async () => {
                           try {
                             await refreshSubscription(sub.id);
-                            toast.success("已刷新订阅");
+                            toast.success(t("pulse.adminSubs.refreshSubSuccess"));
                             await loadAll();
                           } catch (err) {
                             toast.error(
-                              err instanceof Error ? err.message : "刷新失败",
+                              err instanceof Error ? err.message : t("pulse.adminSubs.refreshSubFailed"),
                             );
                           }
                         }}
-                        title="刷新订阅"
+                        title={t("pulse.adminSubs.refreshSubTitle")}
                         className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)]"
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
@@ -861,7 +866,7 @@ export default function SubscriptionsManagePage() {
                       type="button"
                       disabled={speedTesting || busyGlobal !== null}
                       onClick={() => void handleStartSpeedtest({ subscriptionId: sub.id })}
-                      title="测速此订阅"
+                      title={t("pulse.adminSubs.testSubTitle")}
                       className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-blue-600 disabled:opacity-50"
                     >
                       <Zap className="h-3.5 w-3.5" />
@@ -869,7 +874,7 @@ export default function SubscriptionsManagePage() {
                     <button
                       type="button"
                       onClick={() => void handleGlobalPurity(sub.id)}
-                      title="检测纯净度"
+                      title={t("pulse.adminSubs.puritySubTitle")}
                       className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-emerald-600"
                     >
                       <ShieldCheck className="h-3.5 w-3.5" />
@@ -877,18 +882,18 @@ export default function SubscriptionsManagePage() {
                     <button
                       type="button"
                       onClick={async () => {
-                        if (!window.confirm(`确定删除订阅「${sub.name}」？`)) return;
+                        if (!window.confirm(t("pulse.adminSubs.confirmDeleteSub", { name: sub.name }))) return;
                         try {
                           await deleteSubscription(sub.id);
-                          toast.success("已删除订阅");
+                          toast.success(t("pulse.adminSubs.subDeleted"));
                           await loadAll();
                         } catch (err) {
                           toast.error(
-                            err instanceof Error ? err.message : "删除失败",
+                            err instanceof Error ? err.message : t("pulse.common.deleteFailed"),
                           );
                         }
                       }}
-                      title="删除订阅"
+                      title={t("pulse.adminSubs.deleteSubTitle")}
                       className="rounded p-1 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/60"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -907,10 +912,10 @@ export default function SubscriptionsManagePage() {
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <span className="text-sm font-semibold text-[var(--hub-ink)]">
-              IPPure 即时检测控制台
+              {t("pulse.adminSubs.ippureConsoleTitle")}
             </span>
             <span className="hidden sm:inline text-xs text-[var(--hub-muted)]">
-              支持留空检测服务端本机出口，或输入 http:// / socks5:// 代理地址实时验证
+              {t("pulse.adminSubs.ippureConsoleDesc")}
             </span>
           </div>
 
@@ -918,7 +923,7 @@ export default function SubscriptionsManagePage() {
             <input
               value={proxyCheckUrl}
               onChange={(e) => setProxyCheckUrl(e.target.value)}
-              placeholder="可选代理 http:// 或 socks5:// (留空测本机出口)"
+              placeholder={t("pulse.adminSubs.proxyPlaceholder")}
               className="h-8 w-64 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 font-mono text-xs text-[var(--hub-ink)] placeholder:text-[var(--hub-muted)]"
             />
             <button
@@ -930,10 +935,10 @@ export default function SubscriptionsManagePage() {
               <Gauge className="h-3.5 w-3.5" />
               <span>
                 {checkingPurity
-                  ? "检测中..."
+                  ? t("pulse.adminSubs.checking")
                   : proxyCheckUrl.trim()
-                    ? "检测代理 IPPure"
-                    : "检测当前出口 IPPure"}
+                    ? t("pulse.adminSubs.checkProxyBtn")
+                    : t("pulse.adminSubs.checkSelfBtn")}
               </span>
             </button>
           </div>
@@ -943,7 +948,7 @@ export default function SubscriptionsManagePage() {
           {activePurityCard ? (
             activePurityCard.error ? (
               <div className="text-xs text-rose-600">
-                检测失败: {activePurityCard.error}
+                {t("pulse.adminSubs.checkError", { error: activePurityCard.error })}
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-4 text-xs">
@@ -981,7 +986,7 @@ export default function SubscriptionsManagePage() {
                           : "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
                       }`}
                     >
-                      {activePurityCard.is_residential ? "住宅 IP" : "机房 IP"}
+                      {activePurityCard.is_residential ? t("pulse.purity.residentialIp") : t("pulse.purity.datacenterIp")}
                     </span>
                     <span
                       className={`rounded border px-1.5 py-0 text-[10px] ${
@@ -990,7 +995,7 @@ export default function SubscriptionsManagePage() {
                           : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300"
                       }`}
                     >
-                      {activePurityCard.is_broadcast ? "广播 IP" : "原生 IP"}
+                      {activePurityCard.is_broadcast ? t("pulse.purity.broadcastIp") : t("pulse.purity.nativeIp")}
                     </span>
                     <span className="text-[var(--hub-muted)]">
                       {formatRelativeTime(activePurityCard.checked_at)}
@@ -1001,7 +1006,7 @@ export default function SubscriptionsManagePage() {
             )
           ) : (
             <div className="text-xs text-[var(--hub-muted)]">
-              尚无检测记录，点击右侧按钮立即运行 IPPure 出口纯净度检测。
+              {t("pulse.adminSubs.noCheckRecord")}
             </div>
           )}
         </div>
@@ -1011,8 +1016,8 @@ export default function SubscriptionsManagePage() {
       {nodes.length === 0 && !loading ? (
         <HubEmptyState
           icon={Globe}
-          title="暂无订阅节点"
-          description="点击右上角「添加订阅/节点」导入机场订阅 URL 或手动粘贴节点链接，即可开启测速、地图分布与 IPPure 纯净度管理。"
+          title={t("pulse.subscriptions.emptyTitle")}
+          description={t("pulse.adminSubs.emptyDesc")}
           action={
             <button
               type="button"
@@ -1020,7 +1025,7 @@ export default function SubscriptionsManagePage() {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>导入第一个订阅</span>
+              <span>{t("pulse.adminSubs.importFirstSub")}</span>
             </button>
           }
         />
@@ -1033,7 +1038,7 @@ export default function SubscriptionsManagePage() {
                 <input
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
-                  placeholder="搜索节点名、IP、ASN、地区..."
+                  placeholder={t("pulse.subscriptions.searchPlaceholder")}
                   className="h-8 w-56 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] pl-8 pr-7 text-xs text-[var(--hub-ink)] focus:outline-none"
                 />
                 {searchText && (
@@ -1052,7 +1057,7 @@ export default function SubscriptionsManagePage() {
                 onChange={(e) => setSelectedSubId(e.target.value)}
                 className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs text-[var(--hub-ink)]"
               >
-                <option value="all">全部订阅</option>
+                <option value="all">{t("pulse.subscriptions.allSubs")}</option>
                 {subscriptions.map((s) => (
                   <option key={s.id} value={String(s.id)}>
                     {s.name}
@@ -1065,7 +1070,7 @@ export default function SubscriptionsManagePage() {
                 onChange={(e) => setSelectedProtocol(e.target.value)}
                 className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs text-[var(--hub-ink)]"
               >
-                <option value="all">全部协议</option>
+                <option value="all">{t("pulse.subscriptions.allProtocols")}</option>
                 {protocols.map((p) => (
                   <option key={p} value={p}>
                     {p.toUpperCase()}
@@ -1078,7 +1083,7 @@ export default function SubscriptionsManagePage() {
                 onChange={(e) => setSelectedCountry(e.target.value)}
                 className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs text-[var(--hub-ink)]"
               >
-                <option value="all">全部地区</option>
+                <option value="all">{t("pulse.subscriptions.allCountries")}</option>
                 {countries.map(([code, name]) => (
                   <option key={code} value={code}>
                     {code} · {name}
@@ -1097,7 +1102,7 @@ export default function SubscriptionsManagePage() {
             </div>
 
             <span className="font-mono text-xs tabular-nums text-[var(--hub-muted)]">
-              显示 {filteredNodes.length} / {nodes.length} 节点
+              {t("pulse.subscriptions.showingCount", { shown: filteredNodes.length, total: nodes.length })}
             </span>
           </div>
 
@@ -1111,13 +1116,16 @@ export default function SubscriptionsManagePage() {
                       [{speedProgress.modeLabel}]
                     </span>
                     <span>
-                      测速进度 {speedProgress.completed} / {speedProgress.total}
+                      {t("pulse.adminSubs.progressTesting", {
+                        completed: speedProgress.completed,
+                        total: speedProgress.total,
+                      })}
                     </span>
                     <span className="text-emerald-600 dark:text-emerald-400">
-                      · 可用 {speedProgress.ok}
+                      {t("pulse.adminSubs.progressOk", { count: speedProgress.ok })}
                     </span>
                     <span className="text-rose-600 dark:text-rose-400">
-                      · 失败/超时 {speedProgress.failed}
+                      {t("pulse.adminSubs.progressFailed", { count: speedProgress.failed })}
                     </span>
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
@@ -1143,7 +1151,7 @@ export default function SubscriptionsManagePage() {
                 className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
               >
                 <Square className="h-2.5 w-2.5 fill-current" />
-                <span>停止测速</span>
+                <span>{t("pulse.adminSubs.stopTestBtn")}</span>
               </button>
             </div>
           )}
@@ -1153,41 +1161,41 @@ export default function SubscriptionsManagePage() {
               <thead>
                 <tr className="border-b border-[var(--hub-border)] bg-[var(--hub-canvas)] text-[11px] font-medium text-[var(--hub-muted)]">
                   <SortableTableHeader
-                    label="节点名称 / 协议"
+                    label={t("pulse.subscriptions.colNodeProtocol")}
                     column="name"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="地区与坐标"
+                    label={t("pulse.subscriptions.colRegionCoords")}
                     column="country"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="延迟"
+                    label={t("pulse.subscriptions.colLatency")}
                     column="latency"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="下载速度"
+                    label={t("pulse.subscriptions.colDownload")}
                     column="download"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="IPPure 纯净度"
+                    label={t("pulse.subscriptions.colPurity")}
                     column="fraud_score"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
-                  <th className="px-4 py-2.5 text-right">操作</th>
+                  <th className="px-4 py-2.5 text-right">{t("pulse.subscriptions.colActions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--hub-border)]">
@@ -1237,7 +1245,7 @@ export default function SubscriptionsManagePage() {
                             )}`}
                           >
                             {node.latency_ms < 0 && node.test_status === "error"
-                              ? "失败"
+                              ? t("pulse.common.failed")
                               : formatLatency(node.latency_ms)}
                           </span>
                           {methodBadge && (
@@ -1250,7 +1258,7 @@ export default function SubscriptionsManagePage() {
                           )}
                           {isTestingNode && (
                             <LoaderCircle
-                              aria-label="测速中"
+                              aria-label={t("pulse.adminSubs.testingAria")}
                               className="h-3.5 w-3.5 animate-spin text-blue-600 dark:text-blue-400"
                             />
                           )}
@@ -1286,16 +1294,16 @@ export default function SubscriptionsManagePage() {
                                 <span>{tier.shortLabel}</span>
                               </button>
                               <span className="rounded border border-[var(--hub-border)] px-1.5 py-0.5 text-[10px] text-[var(--hub-ink)]">
-                                {node.ippure.is_residential ? "住宅" : "机房"}
+                                {node.ippure.is_residential ? t("pulse.purity.residentialShort") : t("pulse.purity.datacenterShort")}
                               </span>
                               <span className="rounded border border-[var(--hub-border)] px-1.5 py-0.5 text-[10px] text-[var(--hub-muted)]">
-                                {node.ippure.is_broadcast ? "广播" : "原生"}
+                                {node.ippure.is_broadcast ? t("pulse.purity.broadcastShort") : t("pulse.purity.nativeShort")}
                               </span>
                             </div>
                           )
                         ) : (
                           <span className="text-[11px] text-[var(--hub-muted)]">
-                            未检测
+                            {t("pulse.common.untested")}
                           </span>
                         )}
                       </td>
@@ -1306,7 +1314,7 @@ export default function SubscriptionsManagePage() {
                             type="button"
                             disabled={busyNodeId === node.id}
                             onClick={() => openNodeGeoModal(node)}
-                            title="编辑地区与坐标"
+                            title={t("pulse.adminSubs.editGeoTitle")}
                             className="rounded p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)] disabled:opacity-50"
                           >
                             <MapPin className="h-3.5 w-3.5" />
@@ -1317,8 +1325,8 @@ export default function SubscriptionsManagePage() {
                             onClick={() => void handleStartSpeedtest({ nodeIds: [node.id] })}
                             title={
                               speedMode === "client"
-                                ? "本机网络单节点测速"
-                                : "单节点流式测速"
+                                ? t("pulse.adminSubs.testNodeLocalTitle")
+                                : t("pulse.adminSubs.testNodeStreamTitle")
                             }
                             className="rounded p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-blue-600 disabled:opacity-50"
                           >
@@ -1336,18 +1344,18 @@ export default function SubscriptionsManagePage() {
                               try {
                                 await testSubscriptionPurity({ node_ids: [node.id] });
                                 await loadAll();
-                                toast.success("单节点纯净度检测完成");
+                                toast.success(t("pulse.adminSubs.nodePurityDone"));
                               } catch (err) {
                                 toast.error(
                                   err instanceof Error
                                     ? err.message
-                                    : "纯净度检测失败",
+                                    : t("pulse.adminSubs.purityBatchFailed"),
                                 );
                               } finally {
                                 setBusyNodeId(null);
                               }
                             }}
-                            title="测纯净度"
+                            title={t("pulse.adminSubs.testPurityTitle")}
                             className="rounded p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-emerald-600 disabled:opacity-50"
                           >
                             <ShieldCheck className="h-3.5 w-3.5" />
@@ -1364,20 +1372,20 @@ export default function SubscriptionsManagePage() {
                                 await loadAll();
                               } catch (err) {
                                 toast.error(
-                                  err instanceof Error ? err.message : "更新失败",
+                                  err instanceof Error ? err.message : t("pulse.common.updateFailed"),
                                 );
                               } finally {
                                 setBusyNodeId(null);
                               }
                             }}
-                            title={node.enabled ? "禁用节点" : "启用节点"}
+                            title={node.enabled ? t("pulse.adminSubs.disableNodeTitle") : t("pulse.adminSubs.enableNodeTitle")}
                             className={`rounded px-2 py-1 text-[11px] font-medium ${
                               node.enabled
                                 ? "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/60"
                                 : "text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                             }`}
                           >
-                            {node.enabled ? "启用" : "停用"}
+                            {node.enabled ? t("pulse.common.enable") : t("pulse.common.disabledShort")}
                           </button>
                         </div>
                       </td>
@@ -1403,7 +1411,7 @@ export default function SubscriptionsManagePage() {
             <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                  IPPure 详情 · {inspectedNode.name}
+                  {t("pulse.subscriptions.ippureDetailTitle", { name: inspectedNode.name })}
                 </h3>
                 <p className="font-mono text-xs text-[var(--hub-muted)]">
                   {inspectedNode.ippure.ip}
@@ -1420,7 +1428,7 @@ export default function SubscriptionsManagePage() {
 
             <div className="mt-4 space-y-2.5 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">欺诈风险评分</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.fraudScore")}</span>
                 <span
                   className={`rounded border px-2 py-0.5 font-mono font-semibold tabular-nums ${
                     getFraudTier(inspectedNode.ippure.fraud_score).badgeClass
@@ -1431,13 +1439,13 @@ export default function SubscriptionsManagePage() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">ASN / 运营商</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.asnCarrier")}</span>
                 <span className="text-right font-mono text-[var(--hub-ink)]">
                   AS{inspectedNode.ippure.asn} · {inspectedNode.ippure.as_organization}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">归属地</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.location")}</span>
                 <span className="text-[var(--hub-ink)]">
                   {countryCodeToFlagEmoji(inspectedNode.ippure.country_code || "")}{" "}
                   {inspectedNode.ippure.country} · {inspectedNode.ippure.region} ·{" "}
@@ -1445,21 +1453,21 @@ export default function SubscriptionsManagePage() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">经纬度坐标</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.coordinates")}</span>
                 <span className="font-mono tabular-nums text-[var(--hub-ink)]">
                   {inspectedNode.ippure.latitude.toFixed(4)},{" "}
                   {inspectedNode.ippure.longitude.toFixed(4)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">网络属性</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.networkType")}</span>
                 <span className="text-[var(--hub-ink)]">
-                  {inspectedNode.ippure.is_residential ? "住宅 IP" : "机房 IP"} /{" "}
-                  {inspectedNode.ippure.is_broadcast ? "广播 IP" : "原生 IP"}
+                  {inspectedNode.ippure.is_residential ? t("pulse.purity.residentialIp") : t("pulse.purity.datacenterIp")} /{" "}
+                  {inspectedNode.ippure.is_broadcast ? t("pulse.purity.broadcastIp") : t("pulse.purity.nativeIp")}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">检测时间</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.checkedAt")}</span>
                 <span className="font-mono tabular-nums text-[var(--hub-muted)]">
                   {new Date(inspectedNode.ippure.checked_at).toLocaleString()}
                 </span>
@@ -1481,7 +1489,9 @@ export default function SubscriptionsManagePage() {
           >
             <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
               <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                {editingSub ? `编辑订阅 · ${editingSub.name}` : "添加订阅 / 手动节点"}
+                {editingSub
+                  ? t("pulse.adminSubs.modalEditSubTitle", { name: editingSub.name })
+                  : t("pulse.adminSubs.modalAddSubTitle")}
               </h3>
               <button
                 type="button"
@@ -1503,7 +1513,7 @@ export default function SubscriptionsManagePage() {
                       : "text-[var(--hub-muted)]"
                   }`}
                 >
-                  订阅链接 (Clash / Base64)
+                  {t("pulse.adminSubs.tabSubUrl")}
                 </button>
                 <button
                   type="button"
@@ -1514,7 +1524,7 @@ export default function SubscriptionsManagePage() {
                       : "text-[var(--hub-muted)]"
                   }`}
                 >
-                  手动节点列表
+                  {t("pulse.adminSubs.tabManualNodes")}
                 </button>
               </div>
             )}
@@ -1522,7 +1532,7 @@ export default function SubscriptionsManagePage() {
             <form onSubmit={handleSaveSubscription} className="mt-4 space-y-3 text-xs">
               <div>
                 <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                  名称
+                  {t("pulse.adminSubs.fieldName")}
                 </label>
                 <input
                   required
@@ -1530,7 +1540,7 @@ export default function SubscriptionsManagePage() {
                   onChange={(e) =>
                     setSubForm((f) => ({ ...f, name: e.target.value }))
                   }
-                  placeholder="例如：主用高速订阅"
+                  placeholder={t("pulse.adminSubs.fieldNamePlaceholder")}
                   className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 text-sm text-[var(--hub-ink)]"
                 />
               </div>
@@ -1539,7 +1549,7 @@ export default function SubscriptionsManagePage() {
                 <>
                   <div>
                     <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                      订阅 URL {editingSub ? "(留空保留原链接)" : ""}
+                      {t("pulse.adminSubs.fieldSubUrl")}{editingSub ? t("pulse.adminSubs.fieldSubUrlKeepHint") : ""}
                     </label>
                     <input
                       required={!editingSub}
@@ -1553,7 +1563,7 @@ export default function SubscriptionsManagePage() {
                   </div>
                   <div>
                     <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                      自动更新间隔 (小时，0 为关闭)
+                      {t("pulse.adminSubs.fieldAutoUpdate")}
                     </label>
                     <input
                       type="number"
@@ -1572,7 +1582,7 @@ export default function SubscriptionsManagePage() {
               ) : (
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    节点分享链接 (每行一条，支持 vless/vmess/trojan/ss/hy2/socks5/http)
+                    {t("pulse.adminSubs.fieldManualUris")}
                   </label>
                   <textarea
                     required={!editingSub}
@@ -1590,7 +1600,7 @@ export default function SubscriptionsManagePage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    自动测速间隔 (小时，0 关闭)
+                    {t("pulse.adminSubs.fieldAutoSpeed")}
                   </label>
                   <input
                     type="number"
@@ -1607,7 +1617,7 @@ export default function SubscriptionsManagePage() {
                 </div>
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    自动纯净度检测间隔 (小时，0 关闭)
+                    {t("pulse.adminSubs.fieldAutoPurity")}
                   </label>
                   <input
                     type="number"
@@ -1624,7 +1634,7 @@ export default function SubscriptionsManagePage() {
                 </div>
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    到期提前告警天数 (0 关闭)
+                    {t("pulse.adminSubs.fieldExpireAlert")}
                   </label>
                   <input
                     type="number"
@@ -1650,7 +1660,7 @@ export default function SubscriptionsManagePage() {
                       setSubForm((f) => ({ ...f, enabled: e.target.checked }))
                     }
                   />
-                  <span className="text-[var(--hub-ink)]">启用此订阅</span>
+                  <span className="text-[var(--hub-ink)]">{t("pulse.adminSubs.fieldEnableSub")}</span>
                 </label>
               )}
 
@@ -1660,7 +1670,7 @@ export default function SubscriptionsManagePage() {
                   onClick={() => setSubModalOpen(false)}
                   className="rounded-lg border border-[var(--hub-border)] px-3 py-1.5 font-medium text-[var(--hub-ink)]"
                 >
-                  取消
+                  {t("pulse.common.cancel")}
                 </button>
                 <button
                   type="submit"
@@ -1668,7 +1678,7 @@ export default function SubscriptionsManagePage() {
                   className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-1.5 font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
                 >
                   <Activity className="h-3.5 w-3.5" />
-                  <span>{savingSub ? "保存中..." : "保存并解析"}</span>
+                  <span>{savingSub ? t("pulse.common.saving") : t("pulse.adminSubs.saveAndParse")}</span>
                 </button>
               </div>
             </form>
@@ -1689,7 +1699,7 @@ export default function SubscriptionsManagePage() {
             <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                  修正节点地理位置
+                  {t("pulse.adminSubs.geoModalTitle")}
                 </h3>
                 <p className="text-xs text-[var(--hub-muted)]">{editingNode.name}</p>
               </div>
@@ -1706,7 +1716,7 @@ export default function SubscriptionsManagePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    国家代码 (ISO Alpha-2)
+                    {t("pulse.adminSubs.fieldCountryCode")}
                   </label>
                   <input
                     value={nodeGeoForm.country_code}
@@ -1719,7 +1729,7 @@ export default function SubscriptionsManagePage() {
                 </div>
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    城市名称
+                    {t("pulse.adminSubs.fieldCity")}
                   </label>
                   <input
                     value={nodeGeoForm.city}
@@ -1735,7 +1745,7 @@ export default function SubscriptionsManagePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    纬度 (Lat)
+                    {t("pulse.adminSubs.fieldLat")}
                   </label>
                   <input
                     type="number"
@@ -1750,7 +1760,7 @@ export default function SubscriptionsManagePage() {
                 </div>
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    经度 (Lng)
+                    {t("pulse.adminSubs.fieldLng")}
                   </label>
                   <input
                     type="number"
@@ -1771,14 +1781,14 @@ export default function SubscriptionsManagePage() {
                   onClick={() => setEditingNode(null)}
                   className="rounded-lg border border-[var(--hub-border)] px-3 py-1.5 font-medium text-[var(--hub-ink)]"
                 >
-                  取消
+                  {t("pulse.common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={savingNodeGeo}
                   className="rounded-lg bg-zinc-900 px-3.5 py-1.5 font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
                 >
-                  {savingNodeGeo ? "保存中..." : "保存"}
+                  {savingNodeGeo ? t("pulse.common.saving") : t("pulse.common.save")}
                 </button>
               </div>
             </form>

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
   ChevronDown,
@@ -46,6 +47,7 @@ import { WorldMapCard, type MapMode } from "@/components/hub/WorldMapCard";
 import { loginPath } from "@/utils/loginRedirect";
 
 const SubscriptionsPageInner: React.FC = () => {
+  const { t } = useTranslation();
   const { account } = useAccount();
   const isAdmin = Boolean(account?.logged_in);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -182,10 +184,10 @@ const SubscriptionsPageInner: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
-            订阅与节点监控
+            {t("pulse.subscriptions.title")}
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-            全球分布地图、延迟概览与 IPPure 住宅/原生 IP 纯净度检测
+            {t("pulse.subscriptions.subtitle")}
           </p>
         </div>
 
@@ -197,7 +199,7 @@ const SubscriptionsPageInner: React.FC = () => {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>刷新</span>
+            <span>{t("pulse.common.refresh")}</span>
           </button>
 
           {isAdmin && (
@@ -205,7 +207,7 @@ const SubscriptionsPageInner: React.FC = () => {
               to="/admin/subscriptions"
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline transition-colors hover:bg-[var(--hub-canvas)]"
             >
-              <span>管理订阅与节点</span>
+              <span>{t("pulse.subscriptions.manageSubs")}</span>
               <ArrowRight className="h-3.5 w-3.5 text-[var(--hub-muted)]" />
             </Link>
           )}
@@ -255,10 +257,13 @@ const SubscriptionsPageInner: React.FC = () => {
                     <span>
                       {sub.total > 0
                         ? `${formatBytes(used)} / ${formatBytes(sub.total)} (${pct.toFixed(1)}%)`
-                        : "手动节点池"}
+                        : t("pulse.subscriptions.manualPool")}
                     </span>
                     <span>
-                      可用 {sub.available_count} / {sub.node_count}
+                      {t("pulse.subscriptions.availableCount", {
+                        avail: sub.available_count,
+                        total: sub.node_count,
+                      })}
                     </span>
                   </div>
                   <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
@@ -271,16 +276,18 @@ const SubscriptionsPageInner: React.FC = () => {
 
                 {sub.last_error && (
                   <div className="mt-2 truncate text-[11px] text-rose-500">
-                    同步错误: {sub.last_error}
+                    {t("pulse.subscriptions.syncError", { error: sub.last_error })}
                   </div>
                 )}
 
                 <div className="mt-3 flex items-center justify-between border-t border-[var(--hub-border)] pt-2.5 text-[11px] text-[var(--hub-muted)]">
                   <span className="font-mono tabular-nums">
-                    同步于 {formatRelativeTime(sub.last_synced_at)}
+                    {t("pulse.subscriptions.syncedAt", {
+                      time: formatRelativeTime(sub.last_synced_at),
+                    })}
                   </span>
                   <span className="font-mono text-[10px]">
-                    {sub.enabled ? "已启用" : "已停用"}
+                    {sub.enabled ? t("pulse.common.enabled") : t("pulse.common.disabled")}
                   </span>
                 </div>
               </HubCard>
@@ -306,10 +313,10 @@ const SubscriptionsPageInner: React.FC = () => {
           <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
             <div>
               <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                国家/地区分布明细
+                {t("pulse.subscriptions.countryBreakdownTitle")}
               </h3>
               <p className="text-xs text-[var(--hub-muted)]">
-                点击行筛选下方节点列表
+                {t("pulse.subscriptions.countryBreakdownSubtitle")}
               </p>
             </div>
             {selectedCountry && (
@@ -318,7 +325,7 @@ const SubscriptionsPageInner: React.FC = () => {
                 onClick={() => handleSelectCountry("")}
                 className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
               >
-                清除筛选
+                {t("pulse.subscriptions.clearFilter")}
               </button>
             )}
           </div>
@@ -326,7 +333,7 @@ const SubscriptionsPageInner: React.FC = () => {
           <div className="mt-2 flex-1 max-h-[340px] overflow-y-auto divide-y divide-[var(--hub-border)]">
             {sortedCountries.length === 0 ? (
               <div className="py-16 text-center text-xs text-[var(--hub-muted)]">
-                暂无国家分布数据
+                {t("pulse.subscriptions.noCountryData")}
               </div>
             ) : (
               sortedCountries.map((c) => {
@@ -400,10 +407,10 @@ const SubscriptionsPageInner: React.FC = () => {
           <div className="flex items-center gap-2.5">
             <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <span className="text-sm font-semibold text-[var(--hub-ink)]">
-              本机出口 IPPure 纯净度档案
+              {t("pulse.subscriptions.selfPurityTitle")}
             </span>
             <span className="hidden sm:inline text-xs text-[var(--hub-muted)]">
-              展示服务端最近一次 IPPure 欺诈分、ASN 与住宅/广播属性快照
+              {t("pulse.subscriptions.selfPuritySubtitle")}
             </span>
           </div>
 
@@ -414,7 +421,7 @@ const SubscriptionsPageInner: React.FC = () => {
                   getFraudTier(ippureSelf.fraud_score).badgeClass
                 }`}
               >
-                {ippureSelf.ip} · 评分 {ippureSelf.fraud_score} (
+                {ippureSelf.ip} · {t("pulse.subscriptions.scoreBadge", { score: ippureSelf.fraud_score })} (
                 {getFraudTier(ippureSelf.fraud_score).shortLabel})
               </span>
             )}
@@ -431,7 +438,7 @@ const SubscriptionsPageInner: React.FC = () => {
             {ippureSelf ? (
               ippureSelf.error ? (
                 <div className="text-xs text-rose-600">
-                  最近检测异常: {ippureSelf.error}
+                  {t("pulse.subscriptions.lastCheckError", { error: ippureSelf.error })}
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-4 text-xs">
@@ -468,7 +475,7 @@ const SubscriptionsPageInner: React.FC = () => {
                             : "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
                         }`}
                       >
-                        {ippureSelf.is_residential ? "住宅 IP" : "机房 IP"}
+                        {ippureSelf.is_residential ? t("pulse.purity.residentialIp") : t("pulse.purity.datacenterIp")}
                       </span>
                       <span
                         className={`rounded border px-1.5 py-0 text-[10px] ${
@@ -477,10 +484,10 @@ const SubscriptionsPageInner: React.FC = () => {
                             : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300"
                         }`}
                       >
-                        {ippureSelf.is_broadcast ? "广播 IP" : "原生 IP"}
+                        {ippureSelf.is_broadcast ? t("pulse.purity.broadcastIp") : t("pulse.purity.nativeIp")}
                       </span>
                       <span className="text-[var(--hub-muted)]">
-                        更新于 {formatRelativeTime(ippureSelf.checked_at)}
+                        {t("pulse.common.updatedAt", { time: formatRelativeTime(ippureSelf.checked_at) })}
                       </span>
                     </div>
                   </div>
@@ -488,14 +495,14 @@ const SubscriptionsPageInner: React.FC = () => {
               )
             ) : (
               <div className="text-xs text-[var(--hub-muted)]">
-                尚无本机出口 IPPure 检测快照
+                {t("pulse.subscriptions.noSelfSnapshot")}
                 {isAdmin && (
                   <>
-                    ，可前往{" "}
+                    {t("pulse.subscriptions.goToAdminPrefix")}
                     <Link to="/admin/subscriptions" className="text-blue-600 hover:underline dark:text-blue-400">
-                      管理后台
-                    </Link>{" "}
-                    发起即时探测
+                      {t("pulse.subscriptions.goToAdminLink")}
+                    </Link>
+                    {t("pulse.subscriptions.goToAdminSuffix")}
                   </>
                 )}
               </div>
@@ -508,11 +515,11 @@ const SubscriptionsPageInner: React.FC = () => {
       {nodes.length === 0 && !loading ? (
         <HubEmptyState
           icon={Globe}
-          title="暂无订阅节点"
+          title={t("pulse.subscriptions.emptyTitle")}
           description={
             isAdmin
-              ? "当前尚未导入任何订阅或节点，前往管理后台导入机场订阅 URL 或手动粘贴节点即可开启全球分布与 IPPure 纯净度分析。"
-              : "管理员尚未导入订阅或节点。"
+              ? t("pulse.subscriptions.emptyAdminDesc")
+              : t("pulse.subscriptions.emptyGuestDesc")
           }
           action={
             isAdmin ? (
@@ -520,7 +527,7 @@ const SubscriptionsPageInner: React.FC = () => {
                 to="/admin/subscriptions"
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-xs font-medium text-white no-underline hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
               >
-                <span>前往控制台导入订阅</span>
+                <span>{t("pulse.subscriptions.goToImport")}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             ) : (
@@ -529,7 +536,7 @@ const SubscriptionsPageInner: React.FC = () => {
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline hover:bg-[var(--hub-canvas)]"
               >
                 <LogIn className="h-3.5 w-3.5" />
-                <span>管理员登录</span>
+                <span>{t("pulse.common.adminLogin")}</span>
               </Link>
             )
           }
@@ -544,7 +551,7 @@ const SubscriptionsPageInner: React.FC = () => {
                 <input
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
-                  placeholder="搜索节点名、IP、ASN、地区..."
+                  placeholder={t("pulse.subscriptions.searchPlaceholder")}
                   className="h-8 w-56 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] pl-8 pr-7 text-xs text-[var(--hub-ink)] focus:outline-none"
                 />
                 {searchText && (
@@ -563,7 +570,7 @@ const SubscriptionsPageInner: React.FC = () => {
                 onChange={(e) => setSelectedSubId(e.target.value)}
                 className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs text-[var(--hub-ink)]"
               >
-                <option value="all">全部订阅</option>
+                <option value="all">{t("pulse.subscriptions.allSubs")}</option>
                 {subscriptions.map((s) => (
                   <option key={s.id} value={String(s.id)}>
                     {s.name}
@@ -576,7 +583,7 @@ const SubscriptionsPageInner: React.FC = () => {
                 onChange={(e) => setSelectedProtocol(e.target.value)}
                 className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 text-xs text-[var(--hub-ink)]"
               >
-                <option value="all">全部协议</option>
+                <option value="all">{t("pulse.subscriptions.allProtocols")}</option>
                 {protocols.map((p) => (
                   <option key={p} value={p}>
                     {p.toUpperCase()}
@@ -590,7 +597,7 @@ const SubscriptionsPageInner: React.FC = () => {
                   checked={onlyAvailable}
                   onChange={(e) => setOnlyAvailable(e.target.checked)}
                 />
-                <span>仅看可用</span>
+                <span>{t("pulse.subscriptions.onlyAvailable")}</span>
               </label>
 
               <NodeSortSelect
@@ -608,14 +615,17 @@ const SubscriptionsPageInner: React.FC = () => {
                   onClick={() => handleSelectCountry("")}
                   className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-xs font-medium text-blue-700 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300"
                 >
-                  <span>地区: {selectedCountry}</span>
+                  <span>{t("pulse.subscriptions.regionBadge", { code: selectedCountry })}</span>
                   <X className="h-3 w-3" />
                 </button>
               )}
             </div>
 
             <span className="font-mono tabular-nums text-xs text-[var(--hub-muted)]">
-              显示 {filteredNodes.length} / {nodes.length} 节点
+              {t("pulse.subscriptions.showingCount", {
+                shown: filteredNodes.length,
+                total: nodes.length,
+              })}
             </span>
           </div>
 
@@ -624,35 +634,35 @@ const SubscriptionsPageInner: React.FC = () => {
               <thead>
                 <tr className="border-b border-[var(--hub-border)] bg-[var(--hub-canvas)] text-[11px] font-medium text-[var(--hub-muted)]">
                   <SortableTableHeader
-                    label="节点名称 / 协议"
+                    label={t("pulse.subscriptions.colNodeProtocol")}
                     column="name"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="地区"
+                    label={t("pulse.subscriptions.colRegion")}
                     column="country"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="延迟"
+                    label={t("pulse.subscriptions.colLatency")}
                     column="latency"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="下载速度"
+                    label={t("pulse.subscriptions.colDownload")}
                     column="download"
                     sortBy={sortBy}
                     sortDir={sortDir}
                     onSort={handleToggleSort}
                   />
                   <SortableTableHeader
-                    label="IPPure 纯净度"
+                    label={t("pulse.subscriptions.colPurity")}
                     column="fraud_score"
                     sortBy={sortBy}
                     sortDir={sortDir}
@@ -706,7 +716,7 @@ const SubscriptionsPageInner: React.FC = () => {
                             )}`}
                           >
                             {node.latency_ms < 0 && node.test_status === "error"
-                              ? "失败"
+                              ? t("pulse.common.failed")
                               : formatLatency(node.latency_ms)}
                           </span>
                           {methodBadge && (
@@ -749,16 +759,16 @@ const SubscriptionsPageInner: React.FC = () => {
                                 <span>{tier.shortLabel}</span>
                               </button>
                               <span className="rounded border border-[var(--hub-border)] px-1.5 py-0.5 text-[10px] text-[var(--hub-ink)]">
-                                {node.ippure.is_residential ? "住宅" : "机房"}
+                                {node.ippure.is_residential ? t("pulse.purity.residentialShort") : t("pulse.purity.datacenterShort")}
                               </span>
                               <span className="rounded border border-[var(--hub-border)] px-1.5 py-0.5 text-[10px] text-[var(--hub-muted)]">
-                                {node.ippure.is_broadcast ? "广播" : "原生"}
+                                {node.ippure.is_broadcast ? t("pulse.purity.broadcastShort") : t("pulse.purity.nativeShort")}
                               </span>
                             </div>
                           )
                         ) : (
                           <span className="text-[11px] text-[var(--hub-muted)]">
-                            未检测
+                            {t("pulse.common.untested")}
                           </span>
                         )}
                       </td>
@@ -784,7 +794,7 @@ const SubscriptionsPageInner: React.FC = () => {
             <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                  IPPure 详情 · {inspectedNode.name}
+                  {t("pulse.subscriptions.ippureDetailTitle", { name: inspectedNode.name })}
                 </h3>
                 <p className="text-xs text-[var(--hub-muted)] font-mono">
                   {inspectedNode.ippure.ip}
@@ -801,7 +811,7 @@ const SubscriptionsPageInner: React.FC = () => {
 
             <div className="mt-4 space-y-2.5 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">欺诈风险评分</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.fraudScore")}</span>
                 <span
                   className={`rounded border px-2 py-0.5 font-mono tabular-nums font-semibold ${
                     getFraudTier(inspectedNode.ippure.fraud_score).badgeClass
@@ -812,13 +822,13 @@ const SubscriptionsPageInner: React.FC = () => {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">ASN / 运营商</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.asnCarrier")}</span>
                 <span className="font-mono text-[var(--hub-ink)] text-right">
                   AS{inspectedNode.ippure.asn} · {inspectedNode.ippure.as_organization}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">归属地</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.location")}</span>
                 <span className="text-[var(--hub-ink)]">
                   {countryCodeToFlagEmoji(inspectedNode.ippure.country_code || "")}{" "}
                   {inspectedNode.ippure.country} · {inspectedNode.ippure.region} ·{" "}
@@ -826,21 +836,21 @@ const SubscriptionsPageInner: React.FC = () => {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">经纬度坐标</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.coordinates")}</span>
                 <span className="font-mono tabular-nums text-[var(--hub-ink)]">
                   {inspectedNode.ippure.latitude.toFixed(4)},{" "}
                   {inspectedNode.ippure.longitude.toFixed(4)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">网络属性</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.networkType")}</span>
                 <span className="text-[var(--hub-ink)]">
-                  {inspectedNode.ippure.is_residential ? "住宅 IP" : "机房 IP"} /{" "}
-                  {inspectedNode.ippure.is_broadcast ? "广播 IP" : "原生 IP"}
+                  {inspectedNode.ippure.is_residential ? t("pulse.purity.residentialIp") : t("pulse.purity.datacenterIp")} /{" "}
+                  {inspectedNode.ippure.is_broadcast ? t("pulse.purity.broadcastIp") : t("pulse.purity.nativeIp")}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[var(--hub-muted)]">检测时间</span>
+                <span className="text-[var(--hub-muted)]">{t("pulse.subscriptions.checkedAt")}</span>
                 <span className="font-mono tabular-nums text-[var(--hub-muted)]">
                   {new Date(inspectedNode.ippure.checked_at).toLocaleString()}
                 </span>

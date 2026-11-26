@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   ArrowRight,
@@ -126,6 +127,7 @@ const SparklineCard: React.FC<{
 };
 
 const Overview: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [hours, setHours] = useState<number>(24);
   const [data, setData] = useState<OverviewData | null>(null);
@@ -139,11 +141,11 @@ const Overview: React.FC = () => {
       const res = await fetchOverview(h);
       setData(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载总览数据失败");
+      setError(err instanceof Error ? err.message : t("pulse.overview.loadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load(hours);
@@ -177,12 +179,12 @@ const Overview: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
-            系统总览
+            {t("pulse.overview.title")}
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)] font-mono tabular-nums">
             {data?.updated_at
-              ? `更新于 ${formatRelativeTime(data.updated_at)}`
-              : "实时汇总探针服务器、服务可用性与订阅节点健康度"}
+              ? t("pulse.common.updatedAt", { time: formatRelativeTime(data.updated_at) })
+              : t("pulse.overview.subtitle")}
           </p>
         </div>
 
@@ -195,20 +197,20 @@ const Overview: React.FC = () => {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] transition-colors hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>刷新</span>
+            <span>{t("pulse.common.refresh")}</span>
           </button>
         </div>
       </div>
 
       {error && (
         <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
-          <span>无法连接总览接口 ({error})，部分卡片显示占位状态。</span>
+          <span>{t("pulse.overview.errorBanner", { error })}</span>
           <button
             type="button"
             onClick={() => void load(hours)}
             className="font-medium underline"
           >
-            重试
+            {t("pulse.common.retry")}
           </button>
         </div>
       )}
@@ -216,11 +218,11 @@ const Overview: React.FC = () => {
       {/* Row 1: 3 Bento KPI Cards (Cloudflare Pattern) */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <SparklineCard
-          title="服务器探针"
+          title={t("pulse.overview.probesTitle")}
           icon={Server}
-          primaryLabel="在线 / 总数"
+          primaryLabel={t("pulse.overview.onlineTotal")}
           primaryValue={probes ? `${probes.online} / ${probes.total}` : "-- / --"}
-          secondaryLabel="平均 CPU / 内存"
+          secondaryLabel={t("pulse.overview.avgCpuMem")}
           secondaryValue={
             probes
               ? `${probes.avg_cpu.toFixed(0)}% · ${probes.avg_mem_percent.toFixed(0)}%`
@@ -234,11 +236,11 @@ const Overview: React.FC = () => {
         />
 
         <SparklineCard
-          title="服务可用性"
+          title={t("pulse.overview.uptimeTitle")}
           icon={Activity}
-          primaryLabel={`${hours >= 24 ? "24h " : ""}可用率`}
+          primaryLabel={hours >= 24 ? t("pulse.overview.uptime24h") : t("pulse.overview.uptimeRate")}
           primaryValue={uptime ? `${uptime.overall_uptime_24h.toFixed(2)}%` : "--%"}
-          secondaryLabel="平均响应延迟"
+          secondaryLabel={t("pulse.overview.avgLatency")}
           secondaryValue={uptime ? formatLatency(uptime.avg_latency_ms) : "--"}
           sparkline={uptime?.sparkline ?? []}
           strokeColor="#10B981"
@@ -248,13 +250,13 @@ const Overview: React.FC = () => {
         />
 
         <SparklineCard
-          title="订阅与节点"
+          title={t("pulse.overview.subsTitle")}
           icon={Globe}
-          primaryLabel="可用 / 总节点"
+          primaryLabel={t("pulse.overview.availableTotalNodes")}
           primaryValue={
             subs ? `${subs.available_nodes} / ${subs.total_nodes}` : "-- / --"
           }
-          secondaryLabel="纯净 / 住宅节点"
+          secondaryLabel={t("pulse.overview.pureResidential")}
           secondaryValue={
             subs ? `${subs.pure_nodes} · ${subs.residential_nodes}` : "--"
           }
@@ -277,14 +279,14 @@ const Overview: React.FC = () => {
               className="flex items-center gap-2 text-sm font-semibold text-[var(--hub-ink)] hover:underline"
             >
               <Server className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <span>探针节点速览</span>
+              <span>{t("pulse.overview.probesSummary")}</span>
             </button>
             <button
               type="button"
               onClick={() => navigate("/servers")}
               className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
             >
-              全部 →
+              {t("pulse.common.allArrow")}
             </button>
           </div>
 
@@ -339,7 +341,7 @@ const Overview: React.FC = () => {
               ))
             ) : (
               <div className="py-8 text-center text-xs text-[var(--hub-muted)]">
-                暂无在线探针节点
+                {t("pulse.overview.noOnlineProbes")}
               </div>
             )}
           </div>
@@ -354,14 +356,14 @@ const Overview: React.FC = () => {
               className="flex items-center gap-2 text-sm font-semibold text-[var(--hub-ink)] hover:underline"
             >
               <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Uptime 监控速览</span>
+              <span>{t("pulse.overview.uptimeSummary")}</span>
             </button>
             <button
               type="button"
               onClick={() => navigate("/uptime")}
               className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
             >
-              全部 →
+              {t("pulse.common.allArrow")}
             </button>
           </div>
 
@@ -414,7 +416,7 @@ const Overview: React.FC = () => {
               })
             ) : (
               <div className="py-8 text-center text-xs text-[var(--hub-muted)]">
-                暂无 Uptime 监控项
+                {t("pulse.overview.noMonitors")}
               </div>
             )}
           </div>
@@ -429,14 +431,14 @@ const Overview: React.FC = () => {
               className="flex items-center gap-2 text-sm font-semibold text-[var(--hub-ink)] hover:underline"
             >
               <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <span>订阅流量与节点健康</span>
+              <span>{t("pulse.overview.subsSummary")}</span>
             </button>
             <button
               type="button"
               onClick={() => navigate("/subscriptions")}
               className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
             >
-              全部 →
+              {t("pulse.common.allArrow")}
             </button>
           </div>
 
@@ -480,10 +482,14 @@ const Overview: React.FC = () => {
                       <span>
                         {sub.total > 0
                           ? `${formatBytes(used)} / ${formatBytes(sub.total)}`
-                          : `${sub.node_count} 节点`}
+                          : t("pulse.overview.subNodesCount", { count: sub.node_count })}
                       </span>
                       <span className="flex items-center gap-2">
-                        <span>最低 {formatLatency(sub.min_latency_ms)}</span>
+                        <span>
+                          {t("pulse.overview.minLatency", {
+                            latency: formatLatency(sub.min_latency_ms),
+                          })}
+                        </span>
                         <span className="inline-flex items-center gap-1">
                           <span className={`h-1.5 w-1.5 rounded-full ${tier.dotClass}`} />
                           {sub.best_fraud_score >= 0 ? sub.best_fraud_score : "--"}
@@ -495,7 +501,7 @@ const Overview: React.FC = () => {
               })
             ) : (
               <div className="py-8 text-center text-xs text-[var(--hub-muted)]">
-                暂无订阅或节点数据
+                {t("pulse.overview.noSubs")}
               </div>
             )}
           </div>
@@ -507,10 +513,10 @@ const Overview: React.FC = () => {
         <HubCard className="p-5 lg:col-span-6">
           <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
             <h2 className="text-sm font-semibold text-[var(--hub-ink)]">
-              最近动态与事件时间线
+              {t("pulse.overview.eventsTitle")}
             </h2>
             <span className="text-xs text-[var(--hub-muted)] font-mono tabular-nums">
-              {events.length} 条记录
+              {t("pulse.overview.eventsCount", { count: events.length })}
             </span>
           </div>
 
@@ -552,7 +558,7 @@ const Overview: React.FC = () => {
               })
             ) : (
               <div className="py-10 text-center text-xs text-[var(--hub-muted)]">
-                暂无告警或状态变更事件，所有服务运行平稳
+                {t("pulse.overview.noEvents")}
               </div>
             )}
           </div>
@@ -562,10 +568,10 @@ const Overview: React.FC = () => {
           <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
             <div>
               <h2 className="text-sm font-semibold text-[var(--hub-ink)]">
-                全球节点分布预览
+                {t("pulse.overview.mapPreviewTitle")}
               </h2>
               <p className="text-xs text-[var(--hub-muted)]">
-                点击地图进入订阅节点延迟与 IPPure 纯净度分析
+                {t("pulse.overview.mapPreviewSubtitle")}
               </p>
             </div>
             <button
@@ -573,7 +579,7 @@ const Overview: React.FC = () => {
               onClick={() => navigate("/subscriptions")}
               className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
             >
-              <span>完整地图</span>
+              <span>{t("pulse.overview.fullMap")}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>

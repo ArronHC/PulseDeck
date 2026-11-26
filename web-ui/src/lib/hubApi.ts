@@ -1,3 +1,4 @@
+import i18n from "@/i18n/config";
 import { ApiError, api, requestData } from "@/lib/http";
 import type {
   AdminOnboardingState,
@@ -393,7 +394,7 @@ export async function streamTestSubscriptionSpeed(
   }
 
   if (!response.body) {
-    throw new Error("当前浏览器不支持流式响应读取");
+    throw new Error(i18n.t("pulse.common.streamNotSupported"));
   }
 
   const reader = response.body.getReader();
@@ -464,9 +465,10 @@ export function getFraudTier(score: number | undefined | null): {
   dotClass: string;
 } {
   if (score === undefined || score === null || score < 0) {
+    const label = i18n.t("pulse.purity.untested");
     return {
-      label: "未检测",
-      shortLabel: "未检测",
+      label,
+      shortLabel: label,
       tone: "neutral",
       badgeClass:
         "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700",
@@ -474,9 +476,10 @@ export function getFraudTier(score: number | undefined | null): {
     };
   }
   if (score <= 25) {
+    const label = i18n.t("pulse.purity.veryPure");
     return {
-      label: "极纯净",
-      shortLabel: "极纯净",
+      label,
+      shortLabel: label,
       tone: "emerald",
       badgeClass:
         "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/70",
@@ -484,9 +487,10 @@ export function getFraudTier(score: number | undefined | null): {
     };
   }
   if (score <= 50) {
+    const label = i18n.t("pulse.purity.lowRisk");
     return {
-      label: "低风险",
-      shortLabel: "低风险",
+      label,
+      shortLabel: label,
       tone: "blue",
       badgeClass:
         "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/70",
@@ -494,18 +498,20 @@ export function getFraudTier(score: number | undefined | null): {
     };
   }
   if (score <= 75) {
+    const label = i18n.t("pulse.purity.mediumRisk");
     return {
-      label: "中风险",
-      shortLabel: "中风险",
+      label,
+      shortLabel: label,
       tone: "amber",
       badgeClass:
         "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/70",
       dotClass: "bg-amber-500",
     };
   }
+  const label = i18n.t("pulse.purity.highRisk");
   return {
-    label: "高风险",
-    shortLabel: "高风险",
+    label,
+    shortLabel: label,
     tone: "rose",
     badgeClass:
       "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/70",
@@ -531,7 +537,7 @@ export function getLatencyBadgeClass(ms: number): string {
 
 export function formatLatency(ms: number | undefined | null): string {
   if (ms === undefined || ms === null || ms === 0) return "--";
-  if (ms < 0) return "超时";
+  if (ms < 0) return i18n.t("pulse.common.timeout");
   return `${Math.round(ms)} ms`;
 }
 
@@ -540,22 +546,31 @@ export function formatExpiryCountdown(expireUnix: number | undefined | null): {
   urgent: boolean;
 } {
   if (!expireUnix || expireUnix <= 0) {
-    return { text: "长期有效", urgent: false };
+    return { text: i18n.t("pulse.common.longTerm"), urgent: false };
   }
   const nowSec = Math.floor(Date.now() / 1000);
   const diff = expireUnix - nowSec;
   if (diff <= 0) {
-    return { text: "已过期", urgent: true };
+    return { text: i18n.t("pulse.common.expired"), urgent: true };
   }
   const days = Math.floor(diff / 86400);
   if (days >= 365) {
-    return { text: `剩余 ${Math.floor(days / 365)} 年`, urgent: false };
+    return {
+      text: i18n.t("pulse.common.remainingYears", { count: Math.floor(days / 365) }),
+      urgent: false,
+    };
   }
   if (days >= 1) {
-    return { text: `剩余 ${days} 天`, urgent: days <= 7 };
+    return {
+      text: i18n.t("pulse.common.remainingDays", { count: days }),
+      urgent: days <= 7,
+    };
   }
   const hours = Math.max(1, Math.floor(diff / 3600));
-  return { text: `剩余 ${hours} 小时`, urgent: true };
+  return {
+    text: i18n.t("pulse.common.remainingHours", { count: hours }),
+    urgent: true,
+  };
 }
 
 export function formatRelativeTime(iso: string | undefined | null): string {
@@ -563,13 +578,13 @@ export function formatRelativeTime(iso: string | undefined | null): string {
   const ts = Date.parse(iso);
   if (Number.isNaN(ts)) return iso;
   const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (diffSec < 60) return `${diffSec}s 前`;
+  if (diffSec < 60) return i18n.t("pulse.common.secondsAgo", { count: diffSec });
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m 前`;
+  if (diffMin < 60) return i18n.t("pulse.common.minutesAgo", { count: diffMin });
   const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}h 前`;
+  if (diffHour < 24) return i18n.t("pulse.common.hoursAgo", { count: diffHour });
   const diffDay = Math.floor(diffHour / 24);
-  return `${diffDay}d 前`;
+  return i18n.t("pulse.common.daysAgo", { count: diffDay });
 }
 
 export type TestMethodTone =
@@ -587,65 +602,68 @@ export interface TestMethodDisplay {
   badgeClass: string;
 }
 
-const TEST_METHOD_DISPLAY: Record<string, TestMethodDisplay> = {
-  proxy_http: {
-    label: "代理延迟",
-    tone: "emerald",
-    title: "通过服务端代理核心真实握手访问测速端点测得",
-    badgeClass:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300",
-  },
-  proxy_download: {
-    label: "下载测速",
-    tone: "blue",
-    title: "通过服务端代理核心流式下载测速测得",
-    badgeClass:
-      "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800/70 dark:bg-blue-950/60 dark:text-blue-300",
-  },
-  browser_http: {
-    label: "本机 HTTP",
-    tone: "indigo",
-    title: "由用户当前浏览器网络直连 HTTP/TLS 探测测得",
-    badgeClass:
-      "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800/70 dark:bg-indigo-950/60 dark:text-indigo-300",
-  },
-  browser_tcp: {
-    label: "本机 TCP",
-    tone: "sky",
-    title: "由用户当前浏览器网络进行 TCP/TLS 往返探测测得（非 HTTP 端口或自签证书）",
-    badgeClass:
-      "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/70 dark:bg-sky-950/60 dark:text-sky-300",
-  },
-  tcp: {
-    label: "TCP 连通",
-    tone: "zinc",
-    title: "由服务端直接发起 TCP 握手测得（仅验证端口连通，不含代理握手）",
-    badgeClass:
-      "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300",
-  },
-  tcp_fallback: {
-    label: "TCP 回退",
-    tone: "amber",
-    title: "服务端缺少 mihomo/sing-box 代理核心，代理测速已回退为 TCP 连通性测试",
-    badgeClass:
-      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300",
-  },
-};
-
 /** Format speedtest method identifier into concise badge metadata and tooltip. */
 export function formatTestMethod(method?: string): TestMethodDisplay | null {
   const key = (method || "").trim();
   if (!key) return null;
-  if (key in TEST_METHOD_DISPLAY) {
-    return TEST_METHOD_DISPLAY[key];
+  switch (key) {
+    case "proxy_http":
+      return {
+        label: i18n.t("pulse.speedMethod.proxyHttpLabel"),
+        tone: "emerald",
+        title: i18n.t("pulse.speedMethod.proxyHttpTitle"),
+        badgeClass:
+          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300",
+      };
+    case "proxy_download":
+      return {
+        label: i18n.t("pulse.speedMethod.proxyDownloadLabel"),
+        tone: "blue",
+        title: i18n.t("pulse.speedMethod.proxyDownloadTitle"),
+        badgeClass:
+          "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800/70 dark:bg-blue-950/60 dark:text-blue-300",
+      };
+    case "browser_http":
+      return {
+        label: i18n.t("pulse.speedMethod.browserHttpLabel"),
+        tone: "indigo",
+        title: i18n.t("pulse.speedMethod.browserHttpTitle"),
+        badgeClass:
+          "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800/70 dark:bg-indigo-950/60 dark:text-indigo-300",
+      };
+    case "browser_tcp":
+      return {
+        label: i18n.t("pulse.speedMethod.browserTcpLabel"),
+        tone: "sky",
+        title: i18n.t("pulse.speedMethod.browserTcpTitle"),
+        badgeClass:
+          "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/70 dark:bg-sky-950/60 dark:text-sky-300",
+      };
+    case "tcp":
+      return {
+        label: i18n.t("pulse.speedMethod.tcpLabel"),
+        tone: "zinc",
+        title: i18n.t("pulse.speedMethod.tcpTitle"),
+        badgeClass:
+          "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300",
+      };
+    case "tcp_fallback":
+      return {
+        label: i18n.t("pulse.speedMethod.tcpFallbackLabel"),
+        tone: "amber",
+        title: i18n.t("pulse.speedMethod.tcpFallbackTitle"),
+        badgeClass:
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300",
+      };
+    default:
+      return {
+        label: key,
+        tone: "zinc",
+        title: key,
+        badgeClass:
+          "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300",
+      };
   }
-  return {
-    label: key,
-    tone: "zinc",
-    title: key,
-    badgeClass:
-      "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300",
-  };
 }
 
 export function formatDurationCompact(seconds: number | undefined | null): string {

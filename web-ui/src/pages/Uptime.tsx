@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   AlertCircle,
@@ -46,6 +47,7 @@ import { loginPath } from "@/utils/loginRedirect";
 import { toast } from "sonner";
 
 const UptimePageInner: React.FC = () => {
+  const { t } = useTranslation();
   const { account } = useAccount();
   const isAdmin = Boolean(account?.logged_in);
   const [searchParams] = useSearchParams();
@@ -72,11 +74,11 @@ const UptimePageInner: React.FC = () => {
       setSummary(sumRes);
       setIncidents(Array.isArray(incRes) ? incRes : []);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "加载服务状态失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.uptime.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadAll(hours);
@@ -90,12 +92,12 @@ const UptimePageInner: React.FC = () => {
         const list = Array.isArray(res) ? res : res?.heartbeats ?? [];
         setHistoryMap((prev) => ({ ...prev, [id]: list }));
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "加载历史心跳失败");
+        toast.error(err instanceof Error ? err.message : t("pulse.uptime.historyFailed"));
       } finally {
         setHistoryLoading((prev) => ({ ...prev, [id]: false }));
       }
     },
-    [],
+    [t],
   );
 
   useEffect(() => {
@@ -115,15 +117,15 @@ const UptimePageInner: React.FC = () => {
   const filteredMonitors = useMemo(() => {
     const list = summary?.monitors ?? [];
     if (selectedGroup === "all") return list;
-    return list.filter((m) => (m.group || "默认分组") === selectedGroup);
-  }, [summary?.monitors, selectedGroup]);
+    return list.filter((m) => (m.group || t("pulse.common.defaultGroup")) === selectedGroup);
+  }, [summary?.monitors, selectedGroup, t]);
 
   const healthBanner = useMemo(() => {
     const status = summary?.health_status ?? "operational";
     if (status === "outage") {
       return {
-        title: "部分服务出现中断",
-        subtitle: `${summary?.down ?? 0} 个监控处于离线状态`,
+        title: t("pulse.uptime.bannerOutageTitle"),
+        subtitle: t("pulse.uptime.bannerOutageSubtitle", { count: summary?.down ?? 0 }),
         cls: "border-rose-200 bg-rose-50/70 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/40 dark:text-rose-100",
         Icon: AlertCircle,
         iconCls: "text-rose-500",
@@ -131,23 +133,27 @@ const UptimePageInner: React.FC = () => {
     }
     if (status === "degraded") {
       return {
-        title: "部分服务性能降级",
-        subtitle: "存在延迟波动或异常响应",
+        title: t("pulse.uptime.bannerDegradedTitle"),
+        subtitle: t("pulse.uptime.bannerDegradedSubtitle"),
         cls: "border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100",
         Icon: AlertTriangle,
         iconCls: "text-amber-500",
       };
     }
     return {
-      title: "所有服务运行正常",
+      title: t("pulse.uptime.bannerOperationalTitle"),
       subtitle: summary
-        ? `${summary.up} / ${summary.total} 项监控在线 · 平均延迟 ${formatLatency(summary.avg_latency_ms)}`
-        : "正在连接实时状态监控...",
+        ? t("pulse.uptime.bannerOperationalSubtitle", {
+            up: summary.up,
+            total: summary.total,
+            latency: formatLatency(summary.avg_latency_ms),
+          })
+        : t("pulse.uptime.connecting"),
       cls: "border-[var(--hub-border)] bg-[var(--hub-surface)] text-[var(--hub-ink)]",
       Icon: CheckCircle2,
       iconCls: "text-emerald-500",
     };
-  }, [summary]);
+  }, [summary, t]);
 
   const BannerIcon = healthBanner.Icon;
 
@@ -172,7 +178,7 @@ const UptimePageInner: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/60 dark:text-emerald-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Live
+            {t("pulse.health.live")}
           </span>
 
           <TimeRangePills hours={hours} onChange={setHours} />
@@ -184,7 +190,7 @@ const UptimePageInner: React.FC = () => {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">刷新</span>
+            <span className="hidden sm:inline">{t("pulse.common.refresh")}</span>
           </button>
 
           {isAdmin && (
@@ -192,7 +198,7 @@ const UptimePageInner: React.FC = () => {
               to="/admin/uptime"
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline transition-colors hover:bg-[var(--hub-canvas)]"
             >
-              <span>管理监控</span>
+              <span>{t("pulse.uptime.manageMonitors")}</span>
               <ArrowRight className="h-3.5 w-3.5 text-[var(--hub-muted)]" />
             </Link>
           )}
@@ -211,7 +217,7 @@ const UptimePageInner: React.FC = () => {
                 : "border-[var(--hub-border)] bg-[var(--hub-surface)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
             }`}
           >
-            全部 ({summary?.monitors.length ?? 0})
+            {t("pulse.uptime.allCount", { count: summary?.monitors.length ?? 0 })}
           </button>
           {groups.map((grp) => (
             <button
@@ -238,25 +244,27 @@ const UptimePageInner: React.FC = () => {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="text-xs font-medium text-[var(--hub-muted)]">
-                  综合服务可用率
+                  {t("pulse.uptime.overallUptime")}
                 </div>
                 <div className="mt-1 flex items-baseline gap-3">
                   <span className="text-3xl font-semibold tracking-tight font-mono tabular-nums text-[var(--hub-ink)]">
                     {summary ? `${summary.overall_uptime.toFixed(2)}%` : "--%"}
                   </span>
                   <span className="text-xs text-[var(--hub-muted)] font-mono tabular-nums">
-                    平均延迟 {formatLatency(summary?.avg_latency_ms)}
+                    {t("pulse.uptime.avgLatencyLabel", {
+                      latency: formatLatency(summary?.avg_latency_ms),
+                    })}
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-4 text-xs font-mono tabular-nums text-[var(--hub-muted)]">
                 <span className="text-emerald-600 dark:text-emerald-400">
-                  正常 {summary?.up ?? 0}
+                  {t("pulse.uptime.upCount", { count: summary?.up ?? 0 })}
                 </span>
                 <span className="text-rose-600 dark:text-rose-400">
-                  异常 {summary?.down ?? 0}
+                  {t("pulse.uptime.downCount", { count: summary?.down ?? 0 })}
                 </span>
-                <span>暂停 {summary?.paused ?? 0}</span>
+                <span>{t("pulse.uptime.pausedCount", { count: summary?.paused ?? 0 })}</span>
               </div>
             </div>
 
@@ -310,11 +318,11 @@ const UptimePageInner: React.FC = () => {
                             {new Date(pt.t).toLocaleString()}
                           </div>
                           <div className="mt-1 flex items-center justify-between gap-4">
-                            <span>平均延迟</span>
+                            <span>{t("pulse.uptime.tooltipAvgLatency")}</span>
                             <span className="text-emerald-400">{pt.avg_ms} ms</span>
                           </div>
                           <div className="flex items-center justify-between gap-4">
-                            <span>可用率</span>
+                            <span>{t("pulse.uptime.tooltipUptime")}</span>
                             <span>{pt.up_rate?.toFixed(2) ?? "100.00"}%</span>
                           </div>
                         </div>
@@ -338,11 +346,11 @@ const UptimePageInner: React.FC = () => {
           {filteredMonitors.length === 0 && !loading ? (
             <HubEmptyState
               icon={Activity}
-              title="暂无 Uptime 监控项目"
+              title={t("pulse.uptime.emptyTitle")}
               description={
                 isAdmin
-                  ? "当前暂无服务监控项，前往管理后台创建 HTTP/TCP/Ping 探测或同步 Uptime Kuma 状态页。"
-                  : "管理员尚未配置服务可用性监控，登录后可在控制台创建监控或同步外部 Uptime Kuma。"
+                  ? t("pulse.uptime.emptyAdminDesc")
+                  : t("pulse.uptime.emptyGuestDesc")
               }
               action={
                 isAdmin ? (
@@ -350,7 +358,7 @@ const UptimePageInner: React.FC = () => {
                     to="/admin/uptime"
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-xs font-medium text-white no-underline hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
                   >
-                    <span>前往控制台配置监控</span>
+                    <span>{t("pulse.uptime.goToConfig")}</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 ) : (
@@ -359,7 +367,7 @@ const UptimePageInner: React.FC = () => {
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline hover:bg-[var(--hub-canvas)]"
                   >
                     <LogIn className="h-3.5 w-3.5" />
-                    <span>管理员登录</span>
+                    <span>{t("pulse.common.adminLogin")}</span>
                   </Link>
                 )
               }
@@ -445,20 +453,22 @@ const UptimePageInner: React.FC = () => {
                       <div className="border-t border-[var(--hub-border)] bg-[var(--hub-canvas)]/50 px-5 py-4 pl-11">
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--hub-muted)]">
                           <div className="flex flex-wrap items-center gap-3 font-mono">
-                            <span>目标: {mon.target || "--"}</span>
-                            <span>间隔: {mon.interval_sec}s</span>
-                            <span>30天可用率: {mon.uptime_30d?.toFixed(2) ?? "--"}%</span>
-                            <span>最近消息: {mon.last_message || "OK"}</span>
+                            <span>{t("pulse.uptime.target")}: {mon.target || "--"}</span>
+                            <span>{t("pulse.uptime.interval")}: {mon.interval_sec}s</span>
+                            <span>{t("pulse.uptime.uptime30d")}: {mon.uptime_30d?.toFixed(2) ?? "--"}%</span>
+                            <span>{t("pulse.uptime.lastMessage")}: {mon.last_message || "OK"}</span>
                           </div>
                           <span className="font-mono tabular-nums">
-                            最近检查 {formatRelativeTime(mon.last_checked_at)}
+                            {t("pulse.uptime.lastChecked", {
+                              time: formatRelativeTime(mon.last_checked_at),
+                            })}
                           </span>
                         </div>
 
                         <div className="mt-3 h-32 w-full">
                           {historyLoading[mon.id] ? (
                             <div className="flex h-full items-center justify-center text-xs text-[var(--hub-muted)]">
-                              加载详细延迟曲线中...
+                              {t("pulse.uptime.loadingHistory")}
                             </div>
                           ) : (
                             <ResponsiveContainer width="100%" height="100%">
@@ -541,17 +551,17 @@ const UptimePageInner: React.FC = () => {
           <HubCard className="p-5">
             <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
               <h2 className="text-sm font-semibold text-[var(--hub-ink)]">
-                事件历史 (Incidents)
+                {t("pulse.uptime.incidentsTitle")}
               </h2>
               <span className="text-xs font-mono tabular-nums text-[var(--hub-muted)]">
-                最近 {incidents.length} 条
+                {t("pulse.uptime.incidentsCount", { count: incidents.length })}
               </span>
             </div>
 
             <div className="mt-3 space-y-4">
               {incidents.length === 0 ? (
                 <div className="py-10 text-center text-xs text-[var(--hub-muted)]">
-                  近期无中断或异常记录
+                  {t("pulse.uptime.noIncidents")}
                 </div>
               ) : (
                 incidents.map((inc) => {
@@ -584,7 +594,7 @@ const UptimePageInner: React.FC = () => {
                               : "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
                           }`}
                         >
-                          {isResolved ? "已恢复" : "故障中"}
+                          {isResolved ? t("pulse.uptime.resolved") : t("pulse.uptime.ongoing")}
                         </span>
                       </div>
                       {inc.message && (

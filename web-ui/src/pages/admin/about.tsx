@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Activity, Globe, Server, ShieldCheck } from "lucide-react";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 import { SettingCardCollapse } from "@/components/admin/SettingCard";
@@ -10,31 +11,32 @@ import goDependencies from "@/utils/openSource.go.json";
 const ACKNOWLEDGMENTS = [
   {
     name: "Komari",
-    role: "底层探针、指标存储与 WebSocket/RPC 协议",
+    roleKey: "pulse.aboutPage.ackKomari",
     url: "https://github.com/komari-monitor/komari",
     license: "MIT",
   },
   {
     name: "Uptime Kuma",
-    role: "心跳监测理念与外部 Status Page 兼容数据源",
+    roleKey: "pulse.aboutPage.ackKuma",
     url: "https://github.com/louislam/uptime-kuma",
     license: "MIT",
   },
   {
     name: "IPPure",
-    role: "出口 IP 欺诈分、ASN 与住宅/原生 IP 纯净度识别接口",
+    roleKey: "pulse.aboutPage.ackIppure",
     url: "https://ippure.com",
     license: "Service",
   },
   {
     name: "Radix Themes & Tailwind CSS",
-    role: "界面基础原语与设计令牌系统",
+    roleKey: "pulse.aboutPage.ackRadix",
     url: "https://tailwindcss.com",
     license: "MIT",
   },
 ];
 
 export default function AboutPage() {
+  const { t } = useTranslation();
   const { call } = useRPC2Call();
   const [versionInfo, setVersionInfo] = useState<{
     version?: string;
@@ -80,10 +82,10 @@ export default function AboutPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
-            关于 PulseDeck
+            {t("pulse.aboutPage.title")}
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-            一体化自托管服务器探针、服务可用性与代理节点可观测性控制台
+            {t("pulse.aboutPage.subtitle")}
           </p>
         </div>
 
@@ -97,7 +99,7 @@ export default function AboutPage() {
                 : "text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
             }`}
           >
-            产品与架构
+            {t("pulse.aboutPage.tabOverview")}
           </button>
           <button
             type="button"
@@ -108,7 +110,7 @@ export default function AboutPage() {
                 : "text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
             }`}
           >
-            开源致谢与许可证
+            {t("pulse.aboutPage.tabLicenses")}
           </button>
         </div>
       </div>
@@ -132,7 +134,7 @@ export default function AboutPage() {
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-                    前台只读状态展示 · 后台统一资产管理 · 轻量纯净无冗余
+                    {t("pulse.aboutPage.tagline")}
                   </p>
                 </div>
               </div>
@@ -141,23 +143,23 @@ export default function AboutPage() {
             <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
                 <Server className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <div className="mt-2.5 text-xs font-semibold">探针节点引擎</div>
+                <div className="mt-2.5 text-xs font-semibold">{t("pulse.aboutPage.modProbesTitle")}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
-                  实时指标采集、Ping 延迟任务、流量配额与账单追踪。
+                  {t("pulse.aboutPage.modProbesDesc")}
                 </p>
               </div>
               <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
                 <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <div className="mt-2.5 text-xs font-semibold">服务可用性监控</div>
+                <div className="mt-2.5 text-xs font-semibold">{t("pulse.aboutPage.modUptimeTitle")}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
-                  HTTP/Keyword/TCP/Ping 定时探测与 Uptime Kuma 同步源。
+                  {t("pulse.aboutPage.modUptimeDesc")}
                 </p>
               </div>
               <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
                 <Globe className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                <div className="mt-2.5 text-xs font-semibold">订阅与 IP 纯净度</div>
+                <div className="mt-2.5 text-xs font-semibold">{t("pulse.aboutPage.modSubsTitle")}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
-                  机场订阅解析、全球拓扑分布图、并发测速与 IPPure 风险评估。
+                  {t("pulse.aboutPage.modSubsDesc")}
                 </p>
               </div>
             </div>
@@ -168,7 +170,7 @@ export default function AboutPage() {
             <div className="flex items-center gap-2 border-b border-[var(--hub-border)] pb-3">
               <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                核心技术栈与开源致谢
+                {t("pulse.aboutPage.ackSectionTitle")}
               </h3>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -187,7 +189,7 @@ export default function AboutPage() {
                       {item.name}
                     </a>
                     <p className="mt-1 text-[11px] text-[var(--hub-muted)]">
-                      {item.role}
+                      {t(item.roleKey)}
                     </p>
                   </div>
                   <span className="shrink-0 rounded border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2 py-0.5 font-mono text-[10px] text-[var(--hub-muted)]">
@@ -217,7 +219,7 @@ export default function AboutPage() {
 
           <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-surface)] p-5">
             <h2 className="text-sm font-semibold text-[var(--hub-ink)]">
-              第三方开源依赖 ({dependencies.length})
+              {t("pulse.aboutPage.thirdPartyTitle", { count: dependencies.length })}
             </h2>
             <ul className="mt-3 grid grid-cols-1 gap-1.5 text-xs text-[var(--hub-muted)] sm:grid-cols-2">
               {dependencies.map((entry) => (

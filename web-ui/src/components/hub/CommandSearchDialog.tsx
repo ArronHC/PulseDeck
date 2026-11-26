@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Activity, Globe, Search, Server, X, ArrowRight } from "lucide-react";
 import { useNodeList } from "@/contexts/NodeListContext";
 import { useLiveDataMeta } from "@/contexts/LiveDataContext";
@@ -24,6 +25,7 @@ export function CommandSearchDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { nodeList } = useNodeList();
   const { online } = useLiveDataMeta();
@@ -86,8 +88,8 @@ export function CommandSearchDialog({
           id: `srv-${srv.uuid}`,
           kind: "server",
           title: srv.name,
-          subtitle: `${srv.region || "UN"} · ${srv.group || "默认分组"} · ${srv.os || "Linux"}`,
-          badge: isUp ? "在线" : "离线",
+          subtitle: `${srv.region || "UN"} · ${srv.group || t("pulse.search.defaultGroup")} · ${srv.os || "Linux"}`,
+          badge: isUp ? t("pulse.search.online") : t("pulse.search.offline"),
           statusTone: isUp ? "emerald" : "rose",
           to: `/instance/${srv.uuid}`,
         });
@@ -122,7 +124,7 @@ export function CommandSearchDialog({
             node.latency_ms > 0
               ? `${node.latency_ms}ms`
               : node.ippure && node.ippure.fraud_score >= 0
-                ? `纯净 ${node.ippure.fraud_score}`
+                ? t("pulse.search.purityScore", { score: node.ippure.fraud_score })
                 : node.protocol.toUpperCase(),
           statusTone:
             node.latency_ms < 0 ? "rose" : node.latency_ms > 0 ? "emerald" : "neutral",
@@ -132,7 +134,7 @@ export function CommandSearchDialog({
     }
 
     return results.slice(0, 30);
-  }, [nodeList, onlineSet, monitors, subNodes, query]);
+  }, [nodeList, onlineSet, monitors, subNodes, query, t]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -176,7 +178,7 @@ export function CommandSearchDialog({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索探针服务器、Uptime 监控、订阅节点..."
+            placeholder={t("pulse.search.placeholder")}
             className="w-full bg-transparent text-sm text-[var(--hub-ink)] placeholder:text-[var(--hub-muted)] focus:outline-none"
           />
           {query && (
@@ -196,7 +198,7 @@ export function CommandSearchDialog({
         <div className="max-h-[60vh] overflow-y-auto p-2">
           {items.length === 0 ? (
             <div className="py-10 text-center text-xs text-[var(--hub-muted)]">
-              {loadingExtra ? "正在加载索引..." : "未找到匹配的服务器、监控或节点"}
+              {loadingExtra ? t("pulse.search.loadingIndex") : t("pulse.search.noResults")}
             </div>
           ) : (
             <div className="space-y-0.5">
@@ -218,10 +220,10 @@ export function CommandSearchDialog({
                         : "bg-zinc-400";
                 const kindLabel =
                   item.kind === "server"
-                    ? "探针"
+                    ? t("pulse.search.kindServer")
                     : item.kind === "monitor"
-                      ? "监控"
-                      : "节点";
+                      ? t("pulse.search.kindMonitor")
+                      : t("pulse.search.kindNode");
                 return (
                   <button
                     key={item.id}
@@ -269,8 +271,10 @@ export function CommandSearchDialog({
         </div>
 
         <div className="flex items-center justify-between border-t border-[var(--hub-border)] bg-[var(--hub-canvas)] px-4 py-2 text-[11px] text-[var(--hub-muted)]">
-          <span>↑↓ 选择 · Enter 跳转</span>
-          <span className="font-mono tabular-nums">{items.length} 条结果</span>
+          <span>{t("pulse.search.keyboardHint")}</span>
+          <span className="font-mono tabular-nums">
+            {t("pulse.search.resultCount", { count: items.length })}
+          </span>
         </div>
       </div>
     </div>

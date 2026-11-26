@@ -1,18 +1,20 @@
 import { Flex } from "@radix-ui/themes";
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { SURFACE_MOTION } from "@/lib/motion";
 
 const SETTINGS_TABS = [
-  { label: "站点设置", to: "/admin/settings/site" },
-  { label: "常规与 GeoIP", to: "/admin/settings/general" },
-  { label: "自定义代码", to: "/admin/settings/custom" },
-  { label: "登录与 API", to: "/admin/settings/sign-on" },
-  { label: "指标与数据库", to: "/admin/settings/metrics" },
+  { labelKey: "pulse.adminShell.settingsSite", to: "/admin/settings/site" },
+  { labelKey: "pulse.adminShell.settingsGeneral", to: "/admin/settings/general" },
+  { labelKey: "pulse.adminShell.settingsCustom", to: "/admin/settings/custom" },
+  { labelKey: "pulse.adminShell.settingsSignOn", to: "/admin/settings/sign-on" },
+  { labelKey: "pulse.adminShell.settingsMetrics", to: "/admin/settings/metrics" },
 ];
 
 export default function SettingLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const routeKey = location.pathname;
   const mountedKey = useRef(routeKey);
@@ -36,7 +38,7 @@ export default function SettingLayout() {
                   : "border border-[var(--hub-border)] bg-[var(--hub-surface)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
               }`}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </Link>
           );
         })}

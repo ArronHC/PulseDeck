@@ -67,7 +67,7 @@ const AdminLoginPage = () => {
           to="/"
           className="inline-flex h-8 items-center rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-muted)] no-underline hover:text-[var(--hub-ink)]"
         >
-          返回状态页
+          {t("pulse.nav.backToStatus")}
         </Link>
         <button
           type="button"
@@ -97,15 +97,15 @@ const AdminLoginPage = () => {
                       {publicInfo?.sitename || "PulseDeck"}
                     </span>
                     <span className="rounded border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--hub-muted)]">
-                      控制台
+                      {t("pulse.nav.console")}
                     </span>
                   </div>
                   <div>
                     <h1 className="text-xl font-semibold tracking-tight">
-                      {t("login.title", "登录管理后台")}
+                      {t("login.admin_title")}
                     </h1>
                     <p className="mt-1 text-xs text-[var(--hub-muted)]">
-                      {t("login.desc", "输入管理员凭证以访问资产管理与系统配置")}
+                      {t("login.admin_desc")}
                     </p>
                   </div>
                 </div>
@@ -195,7 +195,7 @@ const AdminLoginPage = () => {
                             <LogIn className="h-4 w-4" />
                           )}
                           <span>
-                            {busy ? t("loading", "登录中...") : t("login.title", "登录")}
+                            {busy ? t("loading") : t("login.title")}
                           </span>
                         </button>
                       )}

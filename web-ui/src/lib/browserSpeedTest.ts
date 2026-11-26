@@ -1,3 +1,4 @@
+import i18n from "@/i18n/config";
 import type { SpeedResultReportItem, SubscriptionNode } from "@/types/hub";
 
 const DEFAULT_CONCURRENCY = 6;
@@ -113,7 +114,7 @@ async function probeUrl(
       download_mbps: 0,
       test_status: "ok",
       test_method: "browser_http",
-      test_message: "本机网络 HTTP/TLS 探测成功",
+      test_message: i18n.t("pulse.speedMethod.browserHttpOk"),
     };
   }
 
@@ -124,7 +125,7 @@ async function probeUrl(
       download_mbps: 0,
       test_status: "timeout",
       test_method: "browser_http",
-      test_message: "本机网络探测超时",
+      test_message: i18n.t("pulse.speedMethod.browserTimeout"),
     };
   }
 
@@ -135,7 +136,7 @@ async function probeUrl(
       download_mbps: 0,
       test_status: "error",
       test_method: "browser_tcp",
-      test_message: "本机网络不可达或请求被拦截",
+      test_message: i18n.t("pulse.speedMethod.browserUnreachable"),
     };
   }
 
@@ -150,7 +151,7 @@ async function probeUrl(
       download_mbps: 0,
       test_status: "ok",
       test_method: "browser_http",
-      test_message: "本机网络 HTTP/TLS 探测成功",
+      test_message: i18n.t("pulse.speedMethod.browserHttpOk"),
     };
   }
   if (second.kind === "timeout") {
@@ -160,7 +161,7 @@ async function probeUrl(
       download_mbps: 0,
       test_status: "timeout",
       test_method: "browser_tcp",
-      test_message: "本机网络探测超时",
+      test_message: i18n.t("pulse.speedMethod.browserTimeout"),
     };
   }
   if (second.elapsed < MIN_ROUNDTRIP_MS) {
@@ -170,7 +171,7 @@ async function probeUrl(
       download_mbps: 0,
       test_status: "error",
       test_method: "browser_tcp",
-      test_message: "本机网络不可达或请求被拦截",
+      test_message: i18n.t("pulse.speedMethod.browserUnreachable"),
     };
   }
 
@@ -180,7 +181,7 @@ async function probeUrl(
     download_mbps: 0,
     test_status: "ok",
     test_method: "browser_tcp",
-    test_message: "本机网络 TCP/TLS 探测响应 (非HTTP端口)",
+    test_message: i18n.t("pulse.speedMethod.browserTcpOk"),
   };
 }
 
@@ -198,7 +199,7 @@ export async function probeNodeInBrowser(
       download_mbps: 0,
       test_status: "error",
       test_method: "browser_tcp",
-      test_message: "节点主机或端口无效",
+      test_message: i18n.t("pulse.speedMethod.invalidHostPort"),
     };
   }
 

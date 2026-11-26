@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   AlertCircle,
@@ -48,6 +49,7 @@ const DEFAULT_FORM: UptimeMonitorPayload = {
 };
 
 export default function UptimeManagePage() {
+  const { t } = useTranslation();
   const [summary, setSummary] = useState<UptimeSummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -77,11 +79,11 @@ export default function UptimeManagePage() {
       const sumRes = await fetchUptimeSummary(24);
       setSummary(sumRes);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "加载监控列表失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminUptime.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadAll();
@@ -98,7 +100,7 @@ export default function UptimeManagePage() {
   const filteredMonitors = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (summary?.monitors ?? []).filter((m) => {
-      if (selectedGroup !== "all" && (m.group || "默认分组") !== selectedGroup) {
+      if (selectedGroup !== "all" && (m.group || t("pulse.common.defaultGroup")) !== selectedGroup) {
         return false;
       }
       if (q) {
@@ -107,11 +109,11 @@ export default function UptimeManagePage() {
       }
       return true;
     });
-  }, [summary?.monitors, selectedGroup, search]);
+  }, [summary?.monitors, selectedGroup, search, t]);
 
   const openCreateModal = () => {
     setEditingMonitor(null);
-    setForm(DEFAULT_FORM);
+    setForm({ ...DEFAULT_FORM, group: t("pulse.common.defaultGroup") });
     setMonitorModalOpen(true);
   };
 
@@ -119,7 +121,7 @@ export default function UptimeManagePage() {
     setEditingMonitor(mon);
     setForm({
       name: mon.name,
-      group: mon.group || "默认分组",
+      group: mon.group || t("pulse.common.defaultGroup"),
       type: mon.type || "http",
       target: mon.target,
       keyword: mon.keyword || "",
@@ -133,22 +135,22 @@ export default function UptimeManagePage() {
   const handleSaveMonitor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.target.trim()) {
-      toast.error("请填写监控名称和目标地址");
+      toast.error(t("pulse.adminUptime.nameTargetRequired"));
       return;
     }
     setSavingMonitor(true);
     try {
       if (editingMonitor) {
         await updateUptimeMonitor(editingMonitor.id, form);
-        toast.success("监控项已更新");
+        toast.success(t("pulse.adminUptime.updated"));
       } else {
         await createUptimeMonitor(form);
-        toast.success("已创建监控项");
+        toast.success(t("pulse.adminUptime.created"));
       }
       setMonitorModalOpen(false);
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "保存失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.common.saveFailed"));
     } finally {
       setSavingMonitor(false);
     }
@@ -158,10 +160,10 @@ export default function UptimeManagePage() {
     setBusyActionId(id);
     try {
       await checkUptimeMonitor(id);
-      toast.success("已完成即时探测");
+      toast.success(t("pulse.adminUptime.checkedNow"));
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "检测失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminUptime.checkFailed"));
     } finally {
       setBusyActionId(null);
     }
@@ -172,7 +174,7 @@ export default function UptimeManagePage() {
     try {
       await updateUptimeMonitor(mon.id, {
         name: mon.name,
-        group: mon.group || "默认分组",
+        group: mon.group || t("pulse.common.defaultGroup"),
         type: mon.type || "http",
         target: mon.target,
         keyword: mon.keyword || "",
@@ -180,24 +182,24 @@ export default function UptimeManagePage() {
         timeout_sec: mon.timeout_sec || 10,
         enabled: !mon.enabled,
       });
-      toast.success(mon.enabled ? "已暂停探测" : "已恢复探测");
+      toast.success(mon.enabled ? t("pulse.adminUptime.paused") : t("pulse.adminUptime.resumed"));
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "状态切换失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminUptime.toggleFailed"));
     } finally {
       setBusyActionId(null);
     }
   };
 
   const handleDeleteMonitor = async (mon: UptimeMonitor) => {
-    if (!window.confirm(`确定删除监控项「${mon.name}」吗？`)) return;
+    if (!window.confirm(t("pulse.adminUptime.confirmDelete", { name: mon.name }))) return;
     setBusyActionId(mon.id);
     try {
       await deleteUptimeMonitor(mon.id);
-      toast.success("已删除监控项");
+      toast.success(t("pulse.adminUptime.deleted"));
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "删除失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.common.deleteFailed"));
     } finally {
       setBusyActionId(null);
     }
@@ -210,7 +212,7 @@ export default function UptimeManagePage() {
       const list = await listKumaSources();
       setKumaSources(Array.isArray(list) ? list : []);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "加载外部 Kuma 源失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminUptime.kumaLoadFailed"));
     } finally {
       setKumaBusy(false);
     }
@@ -219,7 +221,7 @@ export default function UptimeManagePage() {
   const handleAddKuma = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!kumaForm.name.trim() || !kumaForm.base_url.trim() || !kumaForm.slug.trim()) {
-      toast.error("请完整填写名称、Uptime Kuma URL 与 Status Page Slug");
+      toast.error(t("pulse.adminUptime.kumaFormRequired"));
       return;
     }
     setKumaBusy(true);
@@ -228,10 +230,10 @@ export default function UptimeManagePage() {
       setKumaForm({ name: "", base_url: "", slug: "", enabled: true });
       const list = await listKumaSources();
       setKumaSources(Array.isArray(list) ? list : []);
-      toast.success("已添加 Uptime Kuma 数据源");
+      toast.success(t("pulse.adminUptime.kumaAdded"));
       await loadAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "添加失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.common.addFailed"));
     } finally {
       setKumaBusy(false);
     }
@@ -244,9 +246,9 @@ export default function UptimeManagePage() {
       const list = await listKumaSources();
       setKumaSources(Array.isArray(list) ? list : []);
       await loadAll();
-      toast.success("同步完成");
+      toast.success(t("pulse.adminUptime.kumaSynced"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "同步失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminUptime.syncFailed"));
     } finally {
       setKumaBusy(false);
     }
@@ -258,9 +260,9 @@ export default function UptimeManagePage() {
       await deleteKumaSource(id);
       setKumaSources((prev) => prev.filter((item) => item.id !== id));
       await loadAll();
-      toast.success("已移除数据源");
+      toast.success(t("pulse.adminUptime.kumaDeleted"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "移除失败");
+      toast.error(err instanceof Error ? err.message : t("pulse.adminUptime.removeFailed"));
     } finally {
       setKumaBusy(false);
     }
@@ -272,10 +274,10 @@ export default function UptimeManagePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
-            服务状态监控管理
+            {t("pulse.adminUptime.title")}
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-            创建并管理 HTTP/Keyword/TCP/Ping 监控项，或同步外部 Uptime Kuma 状态页
+            {t("pulse.adminUptime.subtitle")}
           </p>
         </div>
 
@@ -287,7 +289,7 @@ export default function UptimeManagePage() {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>刷新</span>
+            <span>{t("pulse.common.refresh")}</span>
           </button>
 
           <button
@@ -296,7 +298,7 @@ export default function UptimeManagePage() {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)]"
           >
             <Activity className="h-3.5 w-3.5 text-emerald-600" />
-            <span>Uptime Kuma 同步源</span>
+            <span>{t("pulse.adminUptime.kumaSourcesBtn")}</span>
           </button>
 
           <button
@@ -305,7 +307,7 @@ export default function UptimeManagePage() {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>新建监控</span>
+            <span>{t("pulse.adminUptime.newMonitorBtn")}</span>
           </button>
         </div>
       </div>
@@ -313,31 +315,31 @@ export default function UptimeManagePage() {
       {/* Summary Strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <HubCard className="p-4">
-          <div className="text-[11px] text-[var(--hub-muted)]">总监控项</div>
+          <div className="text-[11px] text-[var(--hub-muted)]">{t("pulse.adminUptime.statTotal")}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
             {summary?.total ?? 0}
           </div>
         </HubCard>
         <HubCard className="p-4">
-          <div className="text-[11px] text-[var(--hub-muted)]">在线</div>
+          <div className="text-[11px] text-[var(--hub-muted)]">{t("pulse.adminUptime.statUp")}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
             {summary?.up ?? 0}
           </div>
         </HubCard>
         <HubCard className="p-4">
-          <div className="text-[11px] text-[var(--hub-muted)]">异常中断</div>
+          <div className="text-[11px] text-[var(--hub-muted)]">{t("pulse.adminUptime.statDown")}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums text-rose-600 dark:text-rose-400">
             {summary?.down ?? 0}
           </div>
         </HubCard>
         <HubCard className="p-4">
-          <div className="text-[11px] text-[var(--hub-muted)]">已暂停</div>
+          <div className="text-[11px] text-[var(--hub-muted)]">{t("pulse.adminUptime.statPaused")}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums text-[var(--hub-muted)]">
             {summary?.paused ?? 0}
           </div>
         </HubCard>
         <HubCard className="col-span-2 p-4 sm:col-span-1">
-          <div className="text-[11px] text-[var(--hub-muted)]">24h 综合可用率</div>
+          <div className="text-[11px] text-[var(--hub-muted)]">{t("pulse.adminUptime.statUptime24h")}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
             {summary ? `${summary.overall_uptime.toFixed(2)}%` : "--%"}
           </div>
@@ -356,7 +358,7 @@ export default function UptimeManagePage() {
                 : "border-[var(--hub-border)] bg-[var(--hub-surface)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
             }`}
           >
-            全部 ({summary?.monitors.length ?? 0})
+            {t("pulse.uptime.allCount", { count: summary?.monitors.length ?? 0 })}
           </button>
           {groups.map((grp) => (
             <button
@@ -379,7 +381,7 @@ export default function UptimeManagePage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索名称或目标地址..."
+            placeholder={t("pulse.adminUptime.searchPlaceholder")}
             className="h-8 w-56 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] pl-8 pr-7 text-xs text-[var(--hub-ink)] focus:outline-none"
           />
           {search && (
@@ -398,8 +400,8 @@ export default function UptimeManagePage() {
       {filteredMonitors.length === 0 && !loading ? (
         <HubEmptyState
           icon={Activity}
-          title="暂无 Uptime 监控项目"
-          description="点击右上角「新建监控」添加 HTTP/Keyword/TCP/Ping 探测，或通过「Uptime Kuma 同步源」接入已有状态页。"
+          title={t("pulse.adminUptime.emptyTitle")}
+          description={t("pulse.adminUptime.emptyDesc")}
           action={
             <button
               type="button"
@@ -407,7 +409,7 @@ export default function UptimeManagePage() {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>创建第一个监控</span>
+              <span>{t("pulse.adminUptime.createFirst")}</span>
             </button>
           }
         />
@@ -417,12 +419,12 @@ export default function UptimeManagePage() {
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-[var(--hub-border)] bg-[var(--hub-canvas)] text-[11px] font-medium text-[var(--hub-muted)]">
-                  <th className="px-4 py-2.5">监控名称 / 目标</th>
-                  <th className="px-4 py-2.5">类型 / 分组</th>
-                  <th className="px-4 py-2.5">间隔</th>
-                  <th className="px-4 py-2.5">24h 可用率 / 延迟</th>
-                  <th className="px-4 py-2.5 w-44">最近心跳</th>
-                  <th className="px-4 py-2.5 text-right">操作</th>
+                  <th className="px-4 py-2.5">{t("pulse.adminUptime.colNameTarget")}</th>
+                  <th className="px-4 py-2.5">{t("pulse.adminUptime.colTypeGroup")}</th>
+                  <th className="px-4 py-2.5">{t("pulse.adminUptime.colInterval")}</th>
+                  <th className="px-4 py-2.5">{t("pulse.adminUptime.colUptimeLatency")}</th>
+                  <th className="px-4 py-2.5 w-44">{t("pulse.adminUptime.colRecentBeats")}</th>
+                  <th className="px-4 py-2.5 text-right">{t("pulse.adminUptime.colActions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--hub-border)]">
@@ -473,7 +475,7 @@ export default function UptimeManagePage() {
                             {mon.type}
                           </span>
                           <span className="text-[var(--hub-muted)]">
-                            {mon.group || "默认分组"}
+                            {mon.group || t("pulse.common.defaultGroup")}
                           </span>
                         </div>
                       </td>
@@ -518,11 +520,11 @@ export default function UptimeManagePage() {
                             type="button"
                             disabled={busy}
                             onClick={() => void handleCheckNow(mon.id)}
-                            title="立即探测"
+                            title={t("pulse.adminUptime.checkNowTitle")}
                             className="inline-flex items-center gap-1 rounded-md border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2 py-1 text-[11px] font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-50"
                           >
                             <Play className="h-3 w-3 text-emerald-600" />
-                            <span>探测</span>
+                            <span>{t("pulse.adminUptime.checkNowShort")}</span>
                           </button>
 
                           {mon.source !== "kuma" && (
@@ -531,7 +533,7 @@ export default function UptimeManagePage() {
                                 type="button"
                                 disabled={busy}
                                 onClick={() => void handleToggleEnabled(mon)}
-                                title={mon.enabled ? "暂停监控" : "启用监控"}
+                                title={mon.enabled ? t("pulse.adminUptime.pauseTitle") : t("pulse.adminUptime.resumeTitle")}
                                 className="rounded-md p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)] disabled:opacity-50"
                               >
                                 {mon.enabled ? (
@@ -544,7 +546,7 @@ export default function UptimeManagePage() {
                                 type="button"
                                 disabled={busy}
                                 onClick={() => openEditModal(mon)}
-                                title="编辑"
+                                title={t("pulse.common.edit")}
                                 className="rounded-md p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)]"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -556,7 +558,7 @@ export default function UptimeManagePage() {
                             type="button"
                             disabled={busy}
                             onClick={() => void handleDeleteMonitor(mon)}
-                            title="删除"
+                            title={t("pulse.common.delete")}
                             className="rounded-md p-1.5 text-[var(--hub-muted)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/60"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -584,7 +586,7 @@ export default function UptimeManagePage() {
           >
             <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
               <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                {editingMonitor ? "编辑监控项" : "新建 Uptime 监控"}
+                {editingMonitor ? t("pulse.adminUptime.modalEditTitle") : t("pulse.adminUptime.modalNewTitle")}
               </h3>
               <button
                 type="button"
@@ -598,13 +600,13 @@ export default function UptimeManagePage() {
             <form onSubmit={handleSaveMonitor} className="mt-4 space-y-3 text-xs">
               <div>
                 <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                  监控名称
+                  {t("pulse.adminUptime.fieldName")}
                 </label>
                 <input
                   required
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="例如：Personal Blog"
+                  placeholder={t("pulse.adminUptime.fieldNamePlaceholder")}
                   className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 text-sm text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 />
               </div>
@@ -612,27 +614,27 @@ export default function UptimeManagePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    探测协议
+                    {t("pulse.adminUptime.fieldProtocol")}
                   </label>
                   <select
                     value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
                     className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 text-sm text-[var(--hub-ink)]"
                   >
-                    <option value="http">HTTP / HTTPS</option>
-                    <option value="keyword">HTTP 关键词</option>
-                    <option value="tcp">TCP 端口</option>
-                    <option value="ping">ICMP Ping</option>
+                    <option value="http">{t("pulse.adminUptime.protocolHttp")}</option>
+                    <option value="keyword">{t("pulse.adminUptime.protocolKeyword")}</option>
+                    <option value="tcp">{t("pulse.adminUptime.protocolTcp")}</option>
+                    <option value="ping">{t("pulse.adminUptime.protocolPing")}</option>
                   </select>
                 </div>
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    分组
+                    {t("pulse.adminUptime.fieldGroup")}
                   </label>
                   <input
                     value={form.group}
                     onChange={(e) => setForm((f) => ({ ...f, group: e.target.value }))}
-                    placeholder="Web / API"
+                    placeholder={t("pulse.adminUptime.fieldGroupPlaceholder")}
                     className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 text-sm text-[var(--hub-ink)]"
                   />
                 </div>
@@ -640,7 +642,7 @@ export default function UptimeManagePage() {
 
               <div>
                 <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                  目标地址 (URL 或 host:port)
+                  {t("pulse.adminUptime.fieldTarget")}
                 </label>
                 <input
                   required
@@ -660,12 +662,12 @@ export default function UptimeManagePage() {
               {form.type === "keyword" && (
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    期望包含关键词
+                    {t("pulse.adminUptime.fieldKeyword")}
                   </label>
                   <input
                     value={form.keyword || ""}
                     onChange={(e) => setForm((f) => ({ ...f, keyword: e.target.value }))}
-                    placeholder="ok / healthy"
+                    placeholder={t("pulse.adminUptime.fieldKeywordPlaceholder")}
                     className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 text-sm text-[var(--hub-ink)]"
                   />
                 </div>
@@ -674,7 +676,7 @@ export default function UptimeManagePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    检查间隔 (秒)
+                    {t("pulse.adminUptime.fieldInterval")}
                   </label>
                   <input
                     type="number"
@@ -691,7 +693,7 @@ export default function UptimeManagePage() {
                 </div>
                 <div>
                   <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    超时时间 (秒)
+                    {t("pulse.adminUptime.fieldTimeout")}
                   </label>
                   <input
                     type="number"
@@ -714,7 +716,7 @@ export default function UptimeManagePage() {
                   checked={form.enabled}
                   onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
                 />
-                <span className="text-[var(--hub-ink)]">启用定时探测</span>
+                <span className="text-[var(--hub-ink)]">{t("pulse.adminUptime.fieldEnabled")}</span>
               </label>
 
               <div className="flex justify-end gap-2 pt-3">
@@ -723,14 +725,14 @@ export default function UptimeManagePage() {
                   onClick={() => setMonitorModalOpen(false)}
                   className="rounded-lg border border-[var(--hub-border)] px-3 py-1.5 text-xs font-medium text-[var(--hub-ink)]"
                 >
-                  取消
+                  {t("pulse.common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={savingMonitor}
                   className="rounded-lg bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
                 >
-                  {savingMonitor ? "保存中..." : "保存"}
+                  {savingMonitor ? t("pulse.common.saving") : t("pulse.common.save")}
                 </button>
               </div>
             </form>
@@ -751,10 +753,10 @@ export default function UptimeManagePage() {
             <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                  外部 Uptime Kuma 状态页同步
+                  {t("pulse.adminUptime.kumaModalTitle")}
                 </h3>
                 <p className="text-xs text-[var(--hub-muted)]">
-                  填写 Uptime Kuma 基础地址与公开 Status Page Slug，自动拉取监控状态与心跳
+                  {t("pulse.adminUptime.kumaModalDesc")}
                 </p>
               </div>
               <button
@@ -772,7 +774,7 @@ export default function UptimeManagePage() {
             >
               <input
                 required
-                placeholder="数据源名称"
+                placeholder={t("pulse.adminUptime.kumaNamePlaceholder")}
                 value={kumaForm.name}
                 onChange={(e) => setKumaForm((f) => ({ ...f, name: e.target.value }))}
                 className="rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 py-2 text-[var(--hub-ink)]"
@@ -789,7 +791,7 @@ export default function UptimeManagePage() {
               <div className="flex gap-2">
                 <input
                   required
-                  placeholder="slug (如 default)"
+                  placeholder={t("pulse.adminUptime.kumaSlugPlaceholder")}
                   value={kumaForm.slug}
                   onChange={(e) => setKumaForm((f) => ({ ...f, slug: e.target.value }))}
                   className="min-w-0 flex-1 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 py-2 font-mono text-[var(--hub-ink)]"
@@ -799,7 +801,7 @@ export default function UptimeManagePage() {
                   disabled={kumaBusy}
                   className="shrink-0 rounded-lg bg-zinc-900 px-3 py-2 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
                 >
-                  添加
+                  {t("pulse.common.add")}
                 </button>
               </div>
             </form>
@@ -807,7 +809,7 @@ export default function UptimeManagePage() {
             <div className="mt-4 max-h-60 divide-y divide-[var(--hub-border)] overflow-y-auto rounded-lg border border-[var(--hub-border)]">
               {kumaSources.length === 0 ? (
                 <div className="py-6 text-center text-xs text-[var(--hub-muted)]">
-                  尚未配置外部 Uptime Kuma 状态页
+                  {t("pulse.adminUptime.kumaEmpty")}
                 </div>
               ) : (
                 kumaSources.map((src) => (
@@ -831,7 +833,7 @@ export default function UptimeManagePage() {
                         onClick={() => void handleSyncKuma(src.id)}
                         className="rounded-md border border-[var(--hub-border)] px-2 py-1 text-[11px] font-medium hover:bg-[var(--hub-canvas)]"
                       >
-                        同步
+                        {t("pulse.common.sync")}
                       </button>
                       <button
                         type="button"

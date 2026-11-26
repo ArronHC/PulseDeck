@@ -1,16 +1,25 @@
 import { DropdownMenu } from "@radix-ui/themes";
+import { Check } from "lucide-react";
 import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { SUPPORTED_LANGUAGES, loadLocaleBundle } from "../i18n/config";
+import {
+  SUPPORTED_LANGUAGES,
+  loadLocaleBundle,
+  resolveSupportedLocale,
+} from "../i18n/config";
 import { writeLanguageCookie } from "@/utils/language";
 import { CONTROL_MOTION } from "@/lib/motion";
 import { MotionIconButton } from "./ui/motion-radix";
-interface LanguageSwitch {
+
+interface LanguageSwitchProps {
   icon?: ReactNode;
 }
 
-const LanguageSwitch = ({ icon }: LanguageSwitch = {}) => {
+const LanguageSwitch = ({ icon }: LanguageSwitchProps = {}) => {
   const { i18n, t } = useTranslation();
+  const activeLocale = resolveSupportedLocale(
+    i18n.resolvedLanguage || i18n.language,
+  );
   // control 层：按钮本身是 motion 元素（不额外包 div），Trigger 的属性/焦点直接落在按钮上
   const trigger = icon ?? (
     <MotionIconButton
@@ -35,19 +44,25 @@ const LanguageSwitch = ({ icon }: LanguageSwitch = {}) => {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger className="km-language-switch">{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Content>
-        {SUPPORTED_LANGUAGES.map((lang) => (
-          <DropdownMenu.Item
-            key={lang.code}
-            onPointerEnter={() => void loadLocaleBundle(lang.code).catch(() => undefined)}
-            onFocus={() => void loadLocaleBundle(lang.code).catch(() => undefined)}
-            onClick={() => {
-              void i18n.changeLanguage(lang.code);
-              writeLanguageCookie(lang.code);
-            }}
-          >
-            {lang.name} ({lang.code.slice(0, 2)})
-          </DropdownMenu.Item>
-        ))}
+        {SUPPORTED_LANGUAGES.map((lang) => {
+          const isActive = activeLocale === lang.code;
+          return (
+            <DropdownMenu.Item
+              key={lang.code}
+              onPointerEnter={() => void loadLocaleBundle(lang.code).catch(() => undefined)}
+              onFocus={() => void loadLocaleBundle(lang.code).catch(() => undefined)}
+              onClick={() => {
+                void i18n.changeLanguage(lang.code);
+                writeLanguageCookie(lang.code);
+              }}
+            >
+              <span className="flex w-full items-center justify-between gap-3">
+                <span>{lang.name}</span>
+                {isActive && <Check className="h-3.5 w-3.5" />}
+              </span>
+            </DropdownMenu.Item>
+          );
+        })}
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   );
