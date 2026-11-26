@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -274,6 +275,259 @@ func TestCoreFallbackAndURIConversion(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, nodes[0].IPPureError, "install mihomo or sing-box")
 	require.NotContains(t, nodes[0].IPPureError, "plain-secret")
+}
+
+func TestCheckSpeedStreamProgress(t *testing.T) {
+	s := testHub(t)
+	s.testURL = "http://speed.invalid/check"
+	releaseSlow := make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-releaseSlow:
+			w.WriteHeader(http.StatusNoContent)
+		case <-r.Context().Done():
+		}
+	}))
+	defer slow.Close()
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer fast.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	source, err := s.SaveSubscription(ctx, 0, SubscriptionInput{
+		Name: ptr("Proxies"), RawContent: ptr(slow.URL + "#Slow\n" + fast.URL + "#Fast"),
+	})
+	require.NoError(t, err)
+	type event struct {
+		completed, total int
+		node             Node
+	}
+	events := make(chan event, 3)
+	type outcome struct {
+		nodes []Node
+		err   error
+	}
+	finished := make(chan outcome, 1)
+	go func() {
+		nodes, err := s.CheckSpeedStream(ctx, SpeedInput{
+			TestFilter: TestFilter{SubscriptionID: source.ID}, Mode: "http", Concurrency: 2,
+		}, func(total int) {
+			events <- event{total: total}
+		}, func(completed, total int, node Node) {
+			events <- event{completed, total, node}
+		})
+		finished <- outcome{nodes, err}
+	}()
+	next := func() event {
+		t.Helper()
+		select {
+		case value := <-events:
+			return value
+		case <-ctx.Done():
+			t.Fatal("timed out waiting for a speed event")
+			return event{}
+		}
+	}
+	require.Equal(t, event{total: 2}, next())
+	first := next()
+	require.Equal(t, 1, first.completed)
+	require.Equal(t, 2, first.total)
+	require.Equal(t, "Fast", first.node.Name)
+	require.Equal(t, "Proxies", first.node.SubscriptionName)
+	require.Equal(t, "ok", first.node.TestStatus)
+	require.Positive(t, first.node.LatencyMS)
+	var samples []models.SubSpeedSample
+	require.NoError(t, s.db.Find(&samples).Error)
+	require.Len(t, samples, 1)
+	require.Equal(t, first.node.ID, samples[0].NodeID)
+	close(releaseSlow)
+	second := next()
+	require.Equal(t, 2, second.completed)
+	require.Equal(t, 2, second.total)
+	require.Equal(t, "Slow", second.node.Name)
+	require.Equal(t, "ok", second.node.TestStatus)
+	select {
+	case got := <-finished:
+		require.NoError(t, got.err)
+		require.Equal(t, []Node{second.node, first.node}, got.nodes)
+	case <-ctx.Done():
+		t.Fatal("speed stream did not finish")
+	}
+}
+
+func TestCheckSpeedStreamValidationAndEmptySelection(t *testing.T) {
+	s := testHub(t)
+	unexpectedStart := func(int) { t.Error("unexpected start callback") }
+	unexpectedResult := func(int, int, Node) { t.Error("unexpected result callback") }
+	for _, input := range []SpeedInput{
+		{Mode: "ping"}, {Concurrency: -1}, {Concurrency: 33}, {TestFilter: TestFilter{NodeIDs: make([]uint, 1001)}},
+	} {
+		_, err := s.CheckSpeedStream(t.Context(), input, unexpectedStart, unexpectedResult)
+		require.ErrorAs(t, err, new(InputError))
+	}
+	starts := 0
+	nodes, err := s.CheckSpeedStream(t.Context(), SpeedInput{
+		TestFilter: TestFilter{NodeIDs: []uint{}},
+	}, func(total int) {
+		starts++
+		require.Zero(t, total)
+	}, unexpectedResult)
+	require.NoError(t, err)
+	require.Equal(t, 1, starts)
+	require.Equal(t, []Node{}, nodes)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	_, err = s.CheckSpeedStream(ctx, SpeedInput{}, func(int) { cancel() }, unexpectedResult)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestSaveSpeedResults(t *testing.T) {
+	s := testHub(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	s.now = func() time.Time { return now }
+	ctx := t.Context()
+	source := models.SubSource{Name: "Client tests"}
+	require.NoError(t, s.db.Create(&source).Error)
+	nodes := []models.SubNode{
+		{SubscriptionID: source.ID, Fingerprint: "first", Name: "First", CountryCode: "JP", RawConfig: "kept"},
+		{SubscriptionID: source.ID, Fingerprint: "second", Name: "Second", DownloadMbps: 17},
+		{SubscriptionID: source.ID, Fingerprint: "third", Name: "Third", DownloadMbps: 21},
+		{SubscriptionID: source.ID, Fingerprint: "fourth", Name: "Fourth", DownloadMbps: 13},
+	}
+	require.NoError(t, s.db.Create(&nodes).Error)
+	input := SpeedReportInput{Results: []SpeedReportItem{
+		{NodeID: nodes[0].ID, LatencyMS: 1, DownloadMbps: 42.5, TestStatus: "ok", TestMessage: "  " + strings.Repeat("速", 501) + "  "},
+		{NodeID: 9999, LatencyMS: 1, TestStatus: "ok"},
+		{NodeID: nodes[1].ID, LatencyMS: 1234, DownloadMbps: 8, TestStatus: "timeout", TestMessage: "  timed out "},
+		{NodeID: nodes[2].ID, LatencyMS: -123, DownloadMbps: 5, TestStatus: "error"},
+		{NodeID: nodes[3].ID, LatencyMS: 600000, TestStatus: "ok"},
+	}}
+	got, err := s.SaveSpeedResults(ctx, input)
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	require.Equal(t, "JP", got[0].CountryCode)
+	require.Equal(t, "Client tests", got[0].SubscriptionName)
+	require.Equal(t, strings.Repeat("速", 500), got[0].TestMessage)
+	require.Equal(t, "timed out", got[1].TestMessage)
+	require.Equal(t, []int64{1, -1, -1, 600000}, []int64{got[0].LatencyMS, got[1].LatencyMS, got[2].LatencyMS, got[3].LatencyMS})
+	for i, expected := range []float64{42.5, 0, 0, 0} {
+		require.Equal(t, nodes[i].ID, got[i].ID)
+		require.Equal(t, expected, got[i].DownloadMbps)
+		require.NotNil(t, got[i].TestedAt)
+		require.True(t, now.Equal(*got[i].TestedAt))
+	}
+	require.EqualValues(t, 1234, input.Results[2].LatencyMS)
+	var persisted []models.SubNode
+	require.NoError(t, s.db.Order("id").Find(&persisted).Error)
+	for i, node := range persisted {
+		require.Equal(t, got[i], NodeView(node, source.Name))
+	}
+	require.Equal(t, "kept", persisted[0].RawConfig)
+	var samples []models.SubSpeedSample
+	require.NoError(t, s.db.Order("id").Find(&samples).Error)
+	require.Len(t, samples, 2)
+	for i, want := range []Node{got[0], got[3]} {
+		require.Equal(t, want.ID, samples[i].NodeID)
+		require.Equal(t, want.LatencyMS, samples[i].LatencyMS)
+		require.True(t, now.Equal(samples[i].TestedAt))
+	}
+	missing, err := s.SaveSpeedResults(ctx, SpeedReportInput{Results: []SpeedReportItem{{NodeID: ^uint(0), TestStatus: "error"}}})
+	require.NoError(t, err)
+	require.Equal(t, []Node{}, missing)
+}
+
+func TestSaveSpeedResultsValidationAndRollback(t *testing.T) {
+	s := testHub(t)
+	ctx := t.Context()
+	nodes := []models.SubNode{{Fingerprint: "first", TestStatus: "untested"}, {Fingerprint: "second", TestStatus: "untested"}}
+	require.NoError(t, s.db.Create(&nodes).Error)
+	valid := SpeedReportItem{NodeID: nodes[0].ID, LatencyMS: 10, TestStatus: "ok"}
+	for _, items := range [][]SpeedReportItem{nil, make([]SpeedReportItem, 1001)} {
+		_, err := s.SaveSpeedResults(ctx, SpeedReportInput{Results: items})
+		require.ErrorContains(t, err, "1–1000")
+	}
+	for _, tc := range []struct {
+		name string
+		item SpeedReportItem
+	}{
+		{"node ID", SpeedReportItem{TestStatus: "error"}},
+		{"status", SpeedReportItem{NodeID: nodes[1].ID, TestStatus: "untested"}},
+		{"zero latency", SpeedReportItem{NodeID: nodes[1].ID, TestStatus: "ok"}},
+		{"excessive latency", SpeedReportItem{NodeID: nodes[1].ID, LatencyMS: 600001, TestStatus: "ok"}},
+		{"negative speed", SpeedReportItem{NodeID: nodes[1].ID, DownloadMbps: -1, TestStatus: "error"}},
+		{"NaN", SpeedReportItem{NodeID: nodes[1].ID, DownloadMbps: math.NaN(), TestStatus: "timeout"}},
+		{"infinity", SpeedReportItem{NodeID: nodes[1].ID, DownloadMbps: math.Inf(1), TestStatus: "error"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := s.SaveSpeedResults(ctx, SpeedReportInput{Results: []SpeedReportItem{valid, tc.item}})
+			require.ErrorAs(t, err, new(InputError))
+		})
+	}
+	require.NoError(t, s.db.Exec(fmt.Sprintf(`CREATE TRIGGER reject_sample BEFORE INSERT ON sub_speed_samples
+		WHEN NEW.node_id = %d BEGIN SELECT RAISE(ABORT, 'sample rejected'); END`, nodes[1].ID)).Error)
+	got, err := s.SaveSpeedResults(ctx, SpeedReportInput{Results: []SpeedReportItem{
+		valid, {NodeID: nodes[1].ID, LatencyMS: 20, TestStatus: "ok"},
+	}})
+	require.ErrorContains(t, err, "sample rejected")
+	require.Nil(t, got)
+	var persisted []models.SubNode
+	require.NoError(t, s.db.Order("id").Find(&persisted).Error)
+	for _, node := range persisted {
+		require.Equal(t, "untested", node.TestStatus)
+		require.Nil(t, node.TestedAt)
+	}
+	var samples int64
+	require.NoError(t, s.db.Model(&models.SubSpeedSample{}).Count(&samples).Error)
+	require.Zero(t, samples)
+}
+
+func TestNodeSorting(t *testing.T) {
+	s := testHub(t)
+	early := time.Now().UTC().Truncate(time.Second)
+	late := early.Add(time.Hour)
+	nodes := []models.SubNode{
+		{Fingerprint: "1", Name: "Zulu", TestStatus: "ok", LatencyMS: 70, DownloadMbps: 15, CountryCode: "US", CountryName: "United States", TestedAt: &late, IPPure: &models.IPPureResult{IP: "192.0.2.1", FraudScore: ptr(4)}},
+		{Fingerprint: "2", Name: "alpha", TestStatus: "ok", LatencyMS: 10, DownloadMbps: 65, CountryCode: "JP", CountryName: "Japan", City: "Tokyo", TestedAt: &early, IPPure: &models.IPPureResult{IP: "192.0.2.2", FraudScore: ptr(0)}},
+		{Fingerprint: "3", Name: "ALPHA", TestStatus: "ok", LatencyMS: 10, DownloadMbps: 65, CountryCode: "JP", CountryName: "Japan", City: "Osaka", TestedAt: &early, IPPure: &models.IPPureResult{IP: "192.0.2.3", FraudScore: ptr(0)}},
+		{Fingerprint: "4", Name: "Bravo", TestStatus: "untested", CountryCode: "JP", CountryName: "Alternate", City: "Yokohama", IPPure: &models.IPPureResult{IP: "192.0.2.4"}},
+		{Fingerprint: "5", Name: "Able", TestStatus: "error", LatencyMS: -1, DownloadMbps: -2, TestedAt: &late, IPPure: &models.IPPureResult{IP: "192.0.2.5", Error: "failed", FraudScore: ptr(1)}},
+		{Fingerprint: "6", Name: "Charlie", IPPure: &models.IPPureResult{IP: "192.0.2.6", FraudScore: ptr(-1)}},
+		{Fingerprint: "7", Name: "Beta", TestStatus: "timeout", LatencyMS: -1, CountryCode: "JP", CountryName: "Japan", City: "Osaka", IPPure: &models.IPPureResult{FraudScore: ptr(1)}},
+	}
+	require.NoError(t, s.db.Create(&nodes).Error)
+	for _, tc := range []struct {
+		by, dir string
+		order   []int
+	}{
+		{"", "", []int{3, 5, 7, 4, 6, 1, 2}},
+		{"default", "desc", []int{2, 1, 6, 4, 7, 5, 3}},
+		{"latency", "", []int{3, 2, 1, 4, 6, 5, 7}},
+		{"latency", "desc", []int{1, 3, 2, 4, 6, 5, 7}},
+		{"download", "", []int{1, 3, 2, 5, 7, 4, 6}},
+		{"download", "desc", []int{3, 2, 1, 5, 7, 4, 6}},
+		{"fraud_score", "asc", []int{3, 2, 1, 5, 7, 4, 6}},
+		{"fraud_score", "desc", []int{1, 3, 2, 5, 7, 4, 6}},
+		{"country", "asc", []int{4, 3, 7, 2, 1, 5, 6}},
+		{"country", "desc", []int{1, 2, 3, 7, 4, 5, 6}},
+		{"tested_at", "", []int{3, 2, 5, 1, 7, 4, 6}},
+		{"tested_at", "desc", []int{5, 1, 3, 2, 7, 4, 6}},
+		{"name", "asc", []int{5, 2, 3, 7, 4, 6, 1}},
+		{"name", "desc", []int{1, 6, 4, 7, 2, 3, 5}},
+	} {
+		t.Run(tc.by+"/"+tc.dir, func(t *testing.T) {
+			got, err := s.Nodes(t.Context(), NodeFilter{SortBy: tc.by, SortDir: tc.dir})
+			require.NoError(t, err)
+			require.Len(t, got, len(tc.order))
+			for i, want := range tc.order {
+				require.Equal(t, nodes[want-1].ID, got[i].ID, "position %d", i)
+			}
+		})
+	}
+	for _, filter := range []NodeFilter{{SortBy: "unknown"}, {SortDir: "descending"}} {
+		_, err := s.Nodes(t.Context(), filter)
+		require.ErrorAs(t, err, new(InputError))
+	}
 }
 
 func TestUptimeCheckAndIncidentLifecycle(t *testing.T) {

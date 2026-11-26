@@ -4,7 +4,7 @@
 
 [English](./README.md) | [简体中文](./README_zh-cn.md) | [Docker 部署指南](./DOCKER.md)
 
-PulseDeck 是一款独立设计的全栈自托管观测与节点管理平台，仅复用 [Komari](https://github.com/komari-monitor/komari) 的底层探针上报、指标存储与插件运行时轮子，不照搬其产品界面与后台结构。系统采用**前台严格只读展示 + 独立重构管理后台**的前后台分离架构，统一整合**服务器探针**、**服务可用性监控（Uptime Kuma 风格）**与**代理订阅地图/测速/IPPure 纯净度检测（Tower 风格）**，并完整保留**插件系统与插件市场**能力。
+PulseDeck 是一款自托管观测与节点管理平台，使用 [Komari](https://github.com/komari-monitor/komari) 的底层探针与指标存储。系统提供**只读状态页和独立管理控制台**，统一整合**服务器探针**、**服务可用性监控（Uptime Kuma 风格）**与**代理订阅地图/测速/IPPure 纯净度检测（Tower 风格）**。
 
 > [!WARNING]
 > PulseDeck 是一款自托管监控与管理工具，请仅部署在你拥有或已获得授权管理的服务器与网络环境中。
@@ -13,7 +13,7 @@ PulseDeck 是一款独立设计的全栈自托管观测与节点管理平台，�
 
 ## 核心特性
 
-- **严格前后台职责分离**：公开前台（`/`、`/servers`、`/uptime`、`/subscriptions`）为 100% 纯只读状态页，零管理弹窗干扰；一切服务器探针节点、Uptime 监控项、外部 Uptime Kuma 同步源、代理订阅导入、并发测速、IPPure 检测、通知告警与插件扩展均统一收口至全新设计的 **PulseDeck 管理控制台**（`/admin/*`）。
+- **严格前后台职责分离**。公开前台（`/`、`/servers`、`/uptime`、`/subscriptions`）为只读状态页。服务器探针节点、Uptime 监控项、外部 Uptime Kuma 同步源、代理订阅导入、并发测速、IPPure 检测和通知告警均在 **PulseDeck 管理控制台**（`/admin/*`）管理。
 - **首次运行交互式安装向导与新手引导**：
   - 首次空库启动自动进入 **5 步交互式初始化向导（`/install`）**，支持实时密码强度检查清单、公开/私有站点访问控制、界面语言选择、指标数据库实时连通测试（`POST /api/install/test-db`）及 `.zip` 备份恢复。
   - 初始化完成自动签发管理员登录态并直达 `/admin/overview`，弹出 **4 步交互式快速上手向导**，同时展示与数据库实时同步的初始化进度清单（`/api/admin/onboarding`），并可随时通过后台顶栏「新手引导」重开。
@@ -22,9 +22,8 @@ PulseDeck 是一款独立设计的全栈自托管观测与节点管理平台，�
 - **服务状态监控（`/uptime` & `/admin/uptime`）**：内置轻量级探测引擎（支持 `HTTP/HTTPS`、`关键词`、`TCP`、`Ping`），提供 **60 格心跳色块条**、响应耗时曲线、30 天历史保留与故障事件时间线；支持同步外部 **Uptime Kuma** 状态页。
 - **订阅管理 · 世界地图 · 测速 · IPPure 纯净度（`/subscriptions` & `/admin/subscriptions`）**：
   - 支持 `Base64` / URI 节点行（`VMess / VLESS / Trojan / Shadowsocks / Hysteria2 / TUIC / SOCKS5 / HTTP`）、`Clash / Mihomo YAML`、`Sing-box JSON` 订阅解析，自动读取 `Subscription-Userinfo` 展示流量进度与到期倒计时，前台对订阅链接与凭证严格脱敏。
-  - 内置离线地区识别与矢量**世界地图**（支持「延迟分布 / IP 纯净度」双视图切换与悬停浮窗，点击国家联动筛选节点）。
-  - 在后台支持批量/单节点并发测速、本机或指定代理即时 **IPPure 纯净度检测**（调用 `https://my.ippure.com/v1/info`，展示欺诈风险分 `fraudScore`、住宅/机房 IP、原生/广播 IP、ASN 与精准城市坐标）及节点地理信息校正。
-- **保留插件生态，去除主题市场（`/admin/plugins` & `/admin/plugins/market`）**：完整保留插件运行时、`.zip` 分片上传、插件市场源管理、插件配置表单及自定义插件页面；移除第三方主题市场以保持统一、稳定的界面体验。
+  - 内置离线地区识别与矢量**世界地图**（支持「延迟分布 / IP 纯净度」双视图切换与悬停浮窗，点击国家联动筛选节点），前后台均支持按延迟、下载速度、IPPure 欺诈分、名称与地区进行排序。
+  - 在后台默认采用**用户本机网络环境**进行实时流式延迟测速（单节点测完即刷新表格并同步持久化），也支持切换服务端 SSE 流式代理/下载测速、本机或指定代理即时 **IPPure 纯净度检测**（调用 `https://my.ippure.com/v1/info`，展示欺诈风险分 `fraudScore`、住宅/机房 IP、原生/广播 IP、ASN 与精准城市坐标）及节点地理信息校正。
 - **全局 `⌘K` 快捷搜索与浅/深色切换**：前台无冗余侧边栏，支持跨模块即时搜索探针主机、Uptime 监控项与订阅节点。
 - **单文件二进制 & Docker 一键部署**：前端构建后内嵌进 Go 单文件可执行程序，同时提供预构建双架构 GHCR 镜像与多阶段 `Dockerfile`。
 
@@ -44,12 +43,13 @@ PulseDeck 是一款独立设计的全栈自托管观测与节点管理平台，�
 | **管理控制台** | `/admin/uptime` | Uptime 监控项增删改/启停/立即探测，以及外部 Uptime Kuma 同步源管理 |
 | **管理控制台** | `/admin/subscriptions` | 订阅链接与手动节点导入、批量/单节点测速、IPPure 出口与节点纯净度检测、地理校正 |
 | **管理控制台** | `/admin/ping`、`/admin/exec`、`/admin/notification/*`、`/admin/logs` | Ping 延迟任务、远程命令执行、告警通道与规则、系统审计日志 |
-| **管理控制台** | `/admin/plugins`、`/admin/plugins/market`、`/admin/plugins/config` | 已装插件启停与日志、插件市场浏览安装、插件配置与动态插件页面 |
 | **管理控制台** | `/admin/settings/*`、`/admin/account`、`/admin/sessions` | 站点设置、安全策略、OAuth/SSO、2FA、登录会话与数据库压缩维护 |
 
 ---
 
 ## 界面预览
+
+### 公开前台（只读观测）
 
 | 系统总览（`/`） | 服务器探针（`/servers`） |
 | :---: | :---: |
@@ -59,9 +59,15 @@ PulseDeck 是一款独立设计的全栈自托管观测与节点管理平台，�
 | :---: | :---: |
 | ![PulseDeck 服务状态](./docs/screenshots/uptime.png) | ![PulseDeck 订阅与节点](./docs/screenshots/subscriptions.png) |
 
-| 首次运行 5 步向导（`/install`） | 全新管理控制台（`/admin/overview`） |
+### 管理控制台（后台）
+
+| 控制台概览（`/admin/overview`） | 探针节点管理（`/admin/servers`） |
 | :---: | :---: |
-| ![PulseDeck 首次运行向导](./docs/screenshots/install.png) | ![PulseDeck 管理控制台](./docs/screenshots/admin.png) |
+| ![PulseDeck 管理控制台](./docs/screenshots/admin.png) | ![PulseDeck 探针管理](./docs/screenshots/admin_servers.png) |
+
+| 服务监控管理（`/admin/uptime`） | 订阅测速与纯净度管理（`/admin/subscriptions`） |
+| :---: | :---: |
+| ![PulseDeck 服务监控管理](./docs/screenshots/admin_uptime.png) | ![PulseDeck 订阅与节点管理](./docs/screenshots/admin_subscriptions.png) |
 
 ---
 
@@ -108,7 +114,7 @@ docker compose up -d
 
 ## 致谢
 
-- [komari-monitor/komari](https://github.com/komari-monitor/komari) — 底层服务器探针引擎、Agent v2 协议、指标存储与插件运行时基础。
+- 底层服务器探针引擎、Agent v2 协议与指标存储。[komari-monitor/komari](https://github.com/komari-monitor/komari)
 - [louislam/uptime-kuma](https://github.com/louislam/uptime-kuma) — 心跳状态条交互与状态页同步兼容。
 - [pengchujin/tower](https://github.com/pengchujin/tower) — 订阅流量/到期管理、离线地区识别与世界地图灵感。
 - [IPPure](https://my.ippure.com/v1/info) — IP 欺诈风险评分与住宅/原生属性检测接口。

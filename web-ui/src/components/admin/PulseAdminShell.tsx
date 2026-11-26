@@ -1,9 +1,8 @@
-import React, { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { useContext, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bell,
-  Blocks,
   Compass,
   ExternalLink,
   FileText,
@@ -17,8 +16,6 @@ import {
   Server,
   Settings,
   ShieldCheck,
-  SlidersHorizontal,
-  Store,
   Sun,
   TerminalSquare,
   Users,
@@ -26,24 +23,19 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useAccount } from "@/contexts/AccountContext";
-import { useAdminNavigation } from "@/contexts/AdminNavigationContext";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
 import { ThemeContext } from "@/contexts/ThemeContext";
 import { useSystemTheme } from "@/hooks/useSystemTheme";
 import { SURFACE_MOTION } from "@/lib/motion";
 import { RevealBoundary } from "@/components/motion/reveal";
 import LanguageSwitch from "@/components/Language";
-import InlineSvgIcon from "@/components/InlineSvgIcon";
-import { iconMap } from "@/utils/iconHelper";
-import { useAdminPluginMenus } from "./useAdminPluginMenus";
 
 interface NavItem {
   key: string;
   label: string;
   to: string;
-  icon: React.ComponentType<{ className?: string }> | string;
-  match?: (pathname: string, search: string) => boolean;
-  reloadDocument?: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  match?: (pathname: string) => boolean;
 }
 
 interface NavSection {
@@ -132,34 +124,6 @@ const STATIC_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "插件扩展",
-    items: [
-      {
-        key: "plugins",
-        label: "已装插件",
-        to: "/admin/plugins",
-        icon: Blocks,
-        match: (p) => p === "/admin/plugins",
-      },
-      {
-        key: "plugins-market",
-        label: "插件市场",
-        to: "/admin/plugins/market",
-        icon: Store,
-        match: (p) =>
-          p.startsWith("/admin/plugins/market") ||
-          p.startsWith("/admin/market/plugins"),
-      },
-      {
-        key: "plugins-config",
-        label: "插件配置",
-        to: "/admin/plugins/config",
-        icon: SlidersHorizontal,
-        match: (p) => p.startsWith("/admin/plugins/config"),
-      },
-    ],
-  },
-  {
     title: "系统",
     items: [
       {
@@ -194,30 +158,6 @@ const STATIC_SECTIONS: NavSection[] = [
   },
 ];
 
-function renderNavIcon(icon: NavItem["icon"], label: string) {
-  if (typeof icon !== "string") {
-    const Icon = icon;
-    return <Icon className="h-4 w-4 shrink-0" />;
-  }
-  const isUrl = /^(https?:\/\/|\/|\.\/|\.\.\/)/.test(icon);
-  if (isUrl) {
-    return (
-      <InlineSvgIcon
-        src={icon}
-        alt={label}
-        style={{ width: 16, height: 16, objectFit: "contain" }}
-        className="h-4 w-4 shrink-0"
-        loading="lazy"
-      />
-    );
-  }
-  const Mapped = iconMap[icon];
-  if (Mapped) {
-    return <Mapped className="h-4 w-4 shrink-0" />;
-  }
-  return <Blocks className="h-4 w-4 shrink-0" />;
-}
-
 const contentSectionKey = (pathname: string) => {
   if (pathname.startsWith("/admin/settings/")) return "/admin/settings/";
   if (pathname.startsWith("/admin/notification/")) return "/admin/notification/";
@@ -229,41 +169,16 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
   const navigate = useNavigate();
   const { account } = useAccount();
   const { publicInfo } = usePublicInfo();
-  const { refreshVersion } = useAdminNavigation();
   const { appearance, setAppearance } = useContext(ThemeContext);
   const resolvedAppearance = useSystemTheme(appearance);
   const isDark = resolvedAppearance === "dark";
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const pluginMenus = useAdminPluginMenus(refreshVersion);
 
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname, location.search]);
 
-  const sections = useMemo<NavSection[]>(() => {
-    return STATIC_SECTIONS.map((section) => {
-      if (section.title !== "插件扩展" || pluginMenus.length === 0) {
-        return section;
-      }
-      return {
-        ...section,
-        items: [
-          ...section.items,
-          ...pluginMenus.map((pm) => ({
-            key: `plugin-${pm.path}`,
-            label: pm.label,
-            to: pm.path,
-            icon: pm.icon,
-            reloadDocument: pm.reloadDocument,
-            match: (p: string, s: string) => `${p}${s}` === pm.path,
-          })),
-        ],
-      };
-    });
-  }, [pluginMenus]);
-
-  const isConfigFormPage = location.pathname === "/admin/plugins/config";
   const isNotificationPage = location.pathname.startsWith("/admin/notification/");
   const isHttps = window.location.protocol === "https:";
   const siteName = publicInfo?.sitename || "PulseDeck";
@@ -278,7 +193,7 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
 
   const renderSidebarContent = () => (
     <nav aria-label="控制台导航" className="space-y-5 px-3 py-4">
-      {sections.map((section) => (
+      {STATIC_SECTIONS.map((section) => (
         <div key={section.title}>
           <div className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-wider text-[var(--hub-muted)] uppercase">
             {section.title}
@@ -286,25 +201,18 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
           <div className="space-y-0.5">
             {section.items.map((item) => {
               const active = item.match
-                ? item.match(location.pathname, location.search)
+                ? item.match(location.pathname)
                 : location.pathname === item.to;
+              const Icon = item.icon;
               const cls = `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium no-underline transition-colors ${
                 active
                   ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                   : "text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)]"
               }`;
 
-              if (item.reloadDocument) {
-                return (
-                  <a key={item.key} href={item.to} className={cls}>
-                    {renderNavIcon(item.icon, item.label)}
-                    <span className="truncate">{item.label}</span>
-                  </a>
-                );
-              }
               return (
                 <Link key={item.key} to={item.to} className={cls}>
-                  {renderNavIcon(item.icon, item.label)}
+                  <Icon className="h-4 w-4 shrink-0" />
                   <span className="truncate">{item.label}</span>
                 </Link>
               );
@@ -435,18 +343,8 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
         )}
 
         {/* Main Content */}
-        <main
-          className={`min-w-0 flex-1 ${
-            isConfigFormPage
-              ? "flex flex-col overflow-hidden p-4 sm:p-6"
-              : "overflow-y-auto p-4 sm:p-6 lg:p-8"
-          }`}
-        >
-          <div
-            className={`mx-auto w-full max-w-[1320px] ${
-              isConfigFormPage ? "flex min-h-0 flex-1 flex-col" : ""
-            }`}
-          >
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto w-full max-w-[1320px]">
             {!isHttps && (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
                 当前未通过 HTTPS 访问控制台，建议在生产环境启用 TLS 反向代理以保护管理员凭证与 Agent 通信。
@@ -479,15 +377,8 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
               initial={SURFACE_MOTION.route.initial}
               animate={SURFACE_MOTION.route.animate}
               transition={SURFACE_MOTION.route.transition}
-              className={isConfigFormPage ? "min-h-0 flex-1" : undefined}
             >
-              <RevealBoundary
-                className={
-                  isConfigFormPage ? "flex h-full min-h-0 flex-col" : undefined
-                }
-              >
-                {content}
-              </RevealBoundary>
+              <RevealBoundary>{content}</RevealBoundary>
             </motion.div>
           </div>
         </main>

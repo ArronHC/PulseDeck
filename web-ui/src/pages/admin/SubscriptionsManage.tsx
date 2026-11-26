@@ -1,15 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Gauge,
   Globe,
   Info,
+  Loader2,
   MapPin,
   Pencil,
   Plus,
   RefreshCw,
   Search,
   ShieldCheck,
+  Square,
   Trash2,
   X,
   Zap,
@@ -28,10 +30,25 @@ import {
   getLatencyBadgeClass,
   patchSubscriptionNode,
   refreshSubscription,
+  reportSubscriptionSpeedResults,
   testSubscriptionPurity,
-  testSubscriptionSpeed,
+  testSubscriptionSpeedStream,
   updateSubscription,
 } from "@/lib/hubApi";
+import {
+  runBrowserSpeedTest,
+  type BrowserSpeedTestResult,
+} from "@/lib/browserSpeedTest";
+import {
+  getDefaultSortDir,
+  sortSubscriptionNodes,
+  type NodeSortBy,
+  type NodeSortDir,
+} from "@/lib/nodeSort";
+import {
+  NodeSortSelect,
+  SortableNodeHeader,
+} from "@/components/hub/NodeSortControls";
 import type {
   IPPureInfo,
   SubscriptionItem,
@@ -42,6 +59,14 @@ import { countryCodeToFlagEmoji } from "@/utils/regionCode";
 import { HubCard, HubEmptyState } from "@/components/hub/HubUi";
 import { toast } from "sonner";
 
+type SpeedTestMode = "client" | "server_http" | "server_download";
+
+const SPEED_MODE_OPTIONS: Array<{ value: SpeedTestMode; label: string }> = [
+  { value: "client", label: "本机网络延迟 (用户环境)" },
+  { value: "server_http", label: "服务端代理测速 (流式)" },
+  { value: "server_download", label: "服务端下载测速 (流式)" },
+];
+
 export default function SubscriptionsManagePage() {
   const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
   const [nodes, setNodes] = useState<SubscriptionNode[]>([]);
@@ -50,11 +75,27 @@ export default function SubscriptionsManagePage() {
   const [busyGlobal, setBusyGlobal] = useState<string | null>(null);
   const [busyNodeId, setBusyNodeId] = useState<number | null>(null);
 
-  // Filters
+  // Speedtest mode & live streaming state
+  const [speedMode, setSpeedMode] = useState<SpeedTestMode>("client");
+  const [testingNodeIds, setTestingNodeIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [speedProgress, setSpeedProgress] = useState<{
+    completed: number;
+    total: number;
+    ok: number;
+    failed: number;
+    modeLabel: string;
+  } | null>(null);
+  const speedAbortRef = useRef<AbortController | null>(null);
+
+  // Filters & sorting
   const [selectedSubId, setSelectedSubId] = useState<string>("all");
   const [selectedProtocol, setSelectedProtocol] = useState<string>("all");
   const [selectedCountry, setSelectedCountry] = useState<string>("all");
   const [searchText, setSearchText] = useState<string>("");
+  const [sortBy, setSortBy] = useState<NodeSortBy>("default");
+  const [sortDir, setSortDir] = useState<NodeSortDir>("asc");
 
   // IPPure live check
   const [proxyCheckUrl, setProxyCheckUrl] = useState<string>("");
@@ -107,6 +148,48 @@ export default function SubscriptionsManagePage() {
     void loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    return () => {
+      speedAbortRef.current?.abort();
+    };
+  }, []);
+
+  const isSpeedTesting = speedProgress !== null;
+
+  const updateNodesAndSubCounts = useCallback(
+    (updater: (prev: SubscriptionNode[]) => SubscriptionNode[]) => {
+      setNodes((prevNodes) => {
+        const nextNodes = updater(prevNodes);
+        const availBySub = new Map<number, number>();
+        for (const n of nextNodes) {
+          if (n.enabled && n.test_status === "ok") {
+            availBySub.set(
+              n.subscription_id,
+              (availBySub.get(n.subscription_id) || 0) + 1,
+            );
+          }
+        }
+        setSubscriptions((prevSubs) =>
+          prevSubs.map((sub) => ({
+            ...sub,
+            available_count: sub.enabled ? availBySub.get(sub.id) || 0 : 0,
+          })),
+        );
+        return nextNodes;
+      });
+    },
+    [],
+  );
+
+  const handleSortColumn = (column: Exclude<NodeSortBy, "default">) => {
+    if (sortBy === column) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(column);
+      setSortDir(getDefaultSortDir(column));
+    }
+  };
+
   const protocols = useMemo(() => {
     const set = new Set<string>();
     for (const n of nodes) {
@@ -127,7 +210,7 @@ export default function SubscriptionsManagePage() {
 
   const filteredNodes = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    return nodes.filter((n) => {
+    const matched = nodes.filter((n) => {
       if (selectedSubId !== "all" && String(n.subscription_id) !== selectedSubId) {
         return false;
       }
@@ -149,7 +232,16 @@ export default function SubscriptionsManagePage() {
       }
       return true;
     });
-  }, [nodes, selectedSubId, selectedCountry, selectedProtocol, searchText]);
+    return sortSubscriptionNodes(matched, sortBy, sortDir);
+  }, [
+    nodes,
+    selectedSubId,
+    selectedCountry,
+    selectedProtocol,
+    searchText,
+    sortBy,
+    sortDir,
+  ]);
 
   const openAddModal = () => {
     setEditingSub(null);
@@ -237,20 +329,220 @@ export default function SubscriptionsManagePage() {
     }
   };
 
-  const handleGlobalSpeedtest = async (subscriptionId?: number) => {
-    setBusyGlobal("speed");
+  const handleStopSpeedtest = () => {
+    speedAbortRef.current?.abort();
+  };
+
+  const handleSpeedtest = async ({
+    subscriptionId,
+    nodeIds,
+  }: {
+    subscriptionId?: number;
+    nodeIds?: number[];
+  } = {}) => {
+    if (speedAbortRef.current) {
+      return;
+    }
+
+    const explicitIds = nodeIds && nodeIds.length > 0 ? new Set(nodeIds) : null;
+    const targetNodes = nodes.filter((n) => {
+      if (explicitIds) return explicitIds.has(n.id);
+      if (subscriptionId !== undefined && n.subscription_id !== subscriptionId) {
+        return false;
+      }
+      return n.enabled;
+    });
+
+    if (targetNodes.length === 0) {
+      toast.info("没有可测速的节点");
+      return;
+    }
+
+    const controller = new AbortController();
+    speedAbortRef.current = controller;
+
+    const modeLabel =
+      SPEED_MODE_OPTIONS.find((opt) => opt.value === speedMode)?.label ||
+      "测速";
+
+    setSpeedProgress({
+      completed: 0,
+      total: targetNodes.length,
+      ok: 0,
+      failed: 0,
+      modeLabel,
+    });
+
+    let completedCount = 0;
+    let okCount = 0;
+    let failedCount = 0;
+    let totalCount = targetNodes.length;
+    let persistFailed = false;
+
     try {
-      await testSubscriptionSpeed({
-        subscription_id: subscriptionId,
-        mode: "http",
-        concurrency: 8,
-      });
-      toast.success("测速已完成");
-      await loadAll();
+      if (speedMode === "client") {
+        setTestingNodeIds(new Set());
+        const pendingPersist: BrowserSpeedTestResult[] = [];
+        let persistChain: Promise<void> = Promise.resolve();
+
+        const enqueuePersist = (batch: BrowserSpeedTestResult[]) => {
+          if (batch.length === 0) return;
+          persistChain = persistChain.then(async () => {
+            try {
+              const savedNodes = await reportSubscriptionSpeedResults(batch);
+              if (Array.isArray(savedNodes) && savedNodes.length > 0) {
+                const byId = new Map(savedNodes.map((item) => [item.id, item]));
+                updateNodesAndSubCounts((prev) =>
+                  prev.map((item) => byId.get(item.id) ?? item),
+                );
+              }
+            } catch {
+              persistFailed = true;
+            }
+          });
+        };
+
+        await runBrowserSpeedTest(targetNodes, {
+          concurrency: 6,
+          timeoutMs: 5000,
+          signal: controller.signal,
+          onNodeStart: (nodeId) => {
+            setTestingNodeIds((prev) => {
+              const next = new Set(prev);
+              next.add(nodeId);
+              return next;
+            });
+          },
+          onNodeResult: (res) => {
+            const nowIso = new Date().toISOString();
+            updateNodesAndSubCounts((prev) =>
+              prev.map((n) =>
+                n.id === res.node_id
+                  ? {
+                      ...n,
+                      latency_ms: res.latency_ms,
+                      download_mbps: res.download_mbps,
+                      test_status: res.test_status,
+                      test_message: res.test_message,
+                      tested_at: nowIso,
+                    }
+                  : n,
+              ),
+            );
+
+            setTestingNodeIds((prev) => {
+              if (!prev.has(res.node_id)) return prev;
+              const next = new Set(prev);
+              next.delete(res.node_id);
+              return next;
+            });
+
+            completedCount += 1;
+            if (res.test_status === "ok") okCount += 1;
+            else failedCount += 1;
+
+            setSpeedProgress({
+              completed: completedCount,
+              total: totalCount,
+              ok: okCount,
+              failed: failedCount,
+              modeLabel,
+            });
+
+            pendingPersist.push(res);
+            if (pendingPersist.length >= 4) {
+              enqueuePersist(pendingPersist.splice(0, pendingPersist.length));
+            }
+          },
+        });
+
+        if (pendingPersist.length > 0) {
+          enqueuePersist(pendingPersist.splice(0, pendingPersist.length));
+        }
+        await persistChain;
+      } else {
+        setTestingNodeIds(new Set(targetNodes.map((n) => n.id)));
+        const streamMode =
+          speedMode === "server_download" ? "download" : "http";
+
+        await testSubscriptionSpeedStream(
+          {
+            subscription_id: subscriptionId,
+            node_ids: nodeIds,
+            mode: streamMode,
+            concurrency: 8,
+          },
+          {
+            onStart: (data) => {
+              if (typeof data.total === "number" && data.total > 0) {
+                totalCount = data.total;
+                setSpeedProgress((prev) =>
+                  prev ? { ...prev, total: data.total } : prev,
+                );
+              }
+            },
+            onNode: (data) => {
+              const updatedNode = data.node;
+              updateNodesAndSubCounts((prev) =>
+                prev.map((n) => (n.id === updatedNode.id ? updatedNode : n)),
+              );
+
+              setTestingNodeIds((prev) => {
+                if (!prev.has(updatedNode.id)) return prev;
+                const next = new Set(prev);
+                next.delete(updatedNode.id);
+                return next;
+              });
+
+              completedCount = data.completed;
+              totalCount = data.total > 0 ? data.total : totalCount;
+              if (updatedNode.test_status === "ok") okCount += 1;
+              else failedCount += 1;
+
+              setSpeedProgress({
+                completed: completedCount,
+                total: totalCount,
+                ok: okCount,
+                failed: failedCount,
+                modeLabel,
+              });
+            },
+            onError: (data) => {
+              toast.error(data.message || "流式测速出现错误");
+            },
+            onDone: (data) => {
+              completedCount = data.completed ?? completedCount;
+              totalCount = data.total > 0 ? data.total : totalCount;
+            },
+          },
+          controller.signal,
+        );
+      }
+
+      if (controller.signal.aborted) {
+        toast.info(
+          `已停止测速 (${completedCount}/${totalCount}，可用 ${okCount})`,
+        );
+      } else if (persistFailed) {
+        toast.warning("测速已完成，但部分结果同步保存失败");
+      } else {
+        toast.success(`测速完成：可用 ${okCount} / 共 ${totalCount} 节点`);
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "测速失败");
+      if (
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === "AbortError")
+      ) {
+        toast.info(
+          `已停止测速 (${completedCount}/${totalCount}，可用 ${okCount})`,
+        );
+      } else {
+        toast.error(err instanceof Error ? err.message : "测速失败");
+      }
     } finally {
-      setBusyGlobal(null);
+      speedAbortRef.current = null;
+      setTestingNodeIds(new Set());
+      setSpeedProgress(null);
     }
   };
 
@@ -348,7 +640,7 @@ export default function SubscriptionsManagePage() {
 
           <button
             type="button"
-            disabled={busyGlobal !== null}
+            disabled={busyGlobal !== null || isSpeedTesting}
             onClick={() => void handleRefreshAll()}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
@@ -358,19 +650,44 @@ export default function SubscriptionsManagePage() {
             <span>刷新全部订阅</span>
           </button>
 
-          <button
-            type="button"
-            disabled={busyGlobal !== null}
-            onClick={() => void handleGlobalSpeedtest()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
+          <select
+            aria-label="测速模式"
+            value={speedMode}
+            disabled={isSpeedTesting}
+            onChange={(e) => setSpeedMode(e.target.value as SpeedTestMode)}
+            className="h-8 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] disabled:opacity-60"
           >
-            <Zap className="h-3.5 w-3.5 text-blue-600" />
-            <span>{busyGlobal === "speed" ? "测速中..." : "批量测速"}</span>
-          </button>
+            {SPEED_MODE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          {isSpeedTesting ? (
+            <button
+              type="button"
+              onClick={handleStopSpeedtest}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-2.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-900/60"
+            >
+              <Square className="h-3 w-3 fill-current" />
+              <span>停止测速</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busyGlobal !== null}
+              onClick={() => void handleSpeedtest()}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
+            >
+              <Zap className="h-3.5 w-3.5 text-blue-600" />
+              <span>{speedMode === "client" ? "本机批量测速" : "批量测速"}</span>
+            </button>
+          )}
 
           <button
             type="button"
-            disabled={busyGlobal !== null}
+            disabled={busyGlobal !== null || isSpeedTesting}
             onClick={() => void handleGlobalPurity()}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
@@ -493,9 +810,10 @@ export default function SubscriptionsManagePage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => void handleGlobalSpeedtest(sub.id)}
+                      disabled={isSpeedTesting || busyGlobal !== null}
+                      onClick={() => void handleSpeedtest({ subscriptionId: sub.id })}
                       title="测速此订阅"
-                      className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-blue-600"
+                      className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-blue-600 disabled:opacity-50"
                     >
                       <Zap className="h-3.5 w-3.5" />
                     </button>
@@ -718,6 +1036,15 @@ export default function SubscriptionsManagePage() {
                   </option>
                 ))}
               </select>
+
+              <NodeSortSelect
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onChange={(nextBy, nextDir) => {
+                  setSortBy(nextBy);
+                  setSortDir(nextDir);
+                }}
+              />
             </div>
 
             <span className="font-mono text-xs tabular-nums text-[var(--hub-muted)]">
@@ -725,21 +1052,101 @@ export default function SubscriptionsManagePage() {
             </span>
           </div>
 
+          {speedProgress && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] bg-[var(--hub-canvas)]/70 px-4 py-2.5 text-xs">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[11px] tabular-nums text-[var(--hub-ink)]">
+                    <span className="font-sans font-medium text-[var(--hub-muted)]">
+                      [{speedProgress.modeLabel}]
+                    </span>
+                    <span>
+                      测速进度 {speedProgress.completed} / {speedProgress.total}
+                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      · 可用 {speedProgress.ok}
+                    </span>
+                    <span className="text-rose-600 dark:text-rose-400">
+                      · 失败/超时 {speedProgress.failed}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all duration-200 dark:bg-blue-500"
+                      style={{
+                        width: `${
+                          speedProgress.total > 0
+                            ? Math.min(
+                                100,
+                                (speedProgress.completed / speedProgress.total) *
+                                  100,
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleStopSpeedtest}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
+              >
+                <Square className="h-2.5 w-2.5 fill-current" />
+                <span>停止测速</span>
+              </button>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-[var(--hub-border)] bg-[var(--hub-canvas)] text-[11px] font-medium text-[var(--hub-muted)]">
-                  <th className="px-4 py-2.5">节点名称 / 协议</th>
-                  <th className="px-4 py-2.5">地区与坐标</th>
-                  <th className="px-4 py-2.5">延迟</th>
-                  <th className="px-4 py-2.5">下载速度</th>
-                  <th className="px-4 py-2.5">IPPure 纯净度</th>
+                  <SortableNodeHeader
+                    label="节点名称 / 协议"
+                    column="name"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortColumn}
+                  />
+                  <SortableNodeHeader
+                    label="地区与坐标"
+                    column="country"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortColumn}
+                  />
+                  <SortableNodeHeader
+                    label="延迟"
+                    column="latency"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortColumn}
+                  />
+                  <SortableNodeHeader
+                    label="下载速度"
+                    column="download"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortColumn}
+                  />
+                  <SortableNodeHeader
+                    label="IPPure 纯净度"
+                    column="fraud_score"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortColumn}
+                  />
                   <th className="px-4 py-2.5 text-right">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--hub-border)]">
                 {filteredNodes.map((node) => {
                   const tier = getFraudTier(node.ippure?.fraud_score);
+                  const isNodeTesting = testingNodeIds.has(node.id);
                   return (
                     <tr
                       key={node.id}
@@ -773,13 +1180,24 @@ export default function SubscriptionsManagePage() {
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap font-mono tabular-nums">
-                        <span
-                          className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${getLatencyBadgeClass(
-                            node.latency_ms,
-                          )}`}
-                        >
-                          {formatLatency(node.latency_ms)}
-                        </span>
+                        <div className="inline-flex items-center gap-1.5">
+                          <span
+                            title={node.test_message || undefined}
+                            className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${getLatencyBadgeClass(
+                              node.latency_ms,
+                            )}`}
+                          >
+                            {node.latency_ms < 0 && node.test_status === "error"
+                              ? "失败"
+                              : formatLatency(node.latency_ms)}
+                          </span>
+                          {isNodeTesting && (
+                            <Loader2
+                              aria-label="测速中"
+                              className="h-3.5 w-3.5 animate-spin text-blue-600 dark:text-blue-400"
+                            />
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap font-mono tabular-nums text-[var(--hub-ink)]">
@@ -838,28 +1256,20 @@ export default function SubscriptionsManagePage() {
                           </button>
                           <button
                             type="button"
-                            disabled={busyNodeId === node.id}
-                            onClick={async () => {
-                              setBusyNodeId(node.id);
-                              try {
-                                await testSubscriptionSpeed({
-                                  node_ids: [node.id],
-                                  mode: "http",
-                                });
-                                await loadAll();
-                                toast.success("单节点测速完成");
-                              } catch (err) {
-                                toast.error(
-                                  err instanceof Error ? err.message : "测速失败",
-                                );
-                              } finally {
-                                setBusyNodeId(null);
-                              }
-                            }}
-                            title="单节点测速"
+                            disabled={busyNodeId === node.id || isSpeedTesting}
+                            onClick={() =>
+                              void handleSpeedtest({ nodeIds: [node.id] })
+                            }
+                            title={
+                              speedMode === "client"
+                                ? "本机网络单节点测速"
+                                : "单节点流式测速"
+                            }
                             className="rounded p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-blue-600 disabled:opacity-50"
                           >
-                            <Zap className="h-3.5 w-3.5" />
+                            <Zap
+                              className={`h-3.5 w-3.5 ${isNodeTesting ? "animate-pulse text-blue-600" : ""}`}
+                            />
                           </button>
                           <button
                             type="button"

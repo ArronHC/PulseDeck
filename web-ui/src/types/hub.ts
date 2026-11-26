@@ -244,8 +244,17 @@ export interface SubscriptionNode {
   latency_ms: number; // -1 if failed, 0 if untested
   download_mbps: number;
   test_status: "untested" | "ok" | "timeout" | "error" | string;
+  test_message?: string;
   tested_at?: string;
   ippure?: IPPureInfo | null;
+}
+
+export interface SpeedResultReportItem {
+  node_id: number;
+  latency_ms: number;
+  download_mbps: number;
+  test_status: "ok" | "timeout" | "error";
+  test_message: string;
 }
 
 export interface MapCountry {
@@ -311,7 +320,6 @@ export interface AdminOnboardingCounts {
   uptime_monitors: number;
   subscriptions: number;
   subscription_nodes: number;
-  plugins: number;
 }
 
 export interface AdminOnboardingSteps {

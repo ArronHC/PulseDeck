@@ -18,10 +18,7 @@ const ChunkSize int64 = 5 * 1024 * 1024
 
 type Purpose string
 
-const (
-	PurposeBackup Purpose = "backup"
-	PurposePlugin Purpose = "plugin"
-)
+const PurposeBackup Purpose = "backup"
 
 var ErrNotFound = errors.New("upload not found")
 
@@ -200,7 +197,7 @@ func (s *Store) load(uploadID string) (Session, error) {
 }
 
 func isKnownPurpose(purpose Purpose) bool {
-	return purpose == PurposeBackup || purpose == PurposePlugin
+	return purpose == PurposeBackup
 }
 
 func validUploadID(uploadID string) bool {

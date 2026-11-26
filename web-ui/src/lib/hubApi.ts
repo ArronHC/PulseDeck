@@ -1,4 +1,4 @@
-import { api, requestData } from "@/lib/http";
+import { ApiError, api, requestData } from "@/lib/http";
 import type {
   AdminOnboardingState,
   AdminOnboardingUpdatePayload,
@@ -8,6 +8,7 @@ import type {
   IPPureInfo,
   KumaSource,
   OverviewData,
+  SpeedResultReportItem,
   SubscriptionItem,
   SubscriptionMapData,
   SubscriptionNode,
@@ -225,6 +226,169 @@ export function testSubscriptionSpeed(payload: {
   concurrency?: number;
 }): Promise<unknown> {
   return api.postData("/api/admin/subscriptions/test-speed", payload);
+}
+
+export function reportSubscriptionSpeedResults(
+  results: SpeedResultReportItem[],
+): Promise<SubscriptionNode[]> {
+  return api.postData<SubscriptionNode[]>(
+    "/api/admin/subscriptions/speed-results",
+    { results },
+  );
+}
+
+export interface SpeedStreamHandlers {
+  onStart?: (data: { total: number }) => void;
+  onNode?: (data: {
+    completed: number;
+    total: number;
+    node: SubscriptionNode;
+  }) => void;
+  onError?: (data: { message: string }) => void;
+  onDone?: (data: { completed: number; total: number }) => void;
+}
+
+function dispatchSpeedStreamEvent(
+  eventName: string,
+  rawData: string,
+  handlers: SpeedStreamHandlers,
+): void {
+  if (!rawData) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawData);
+  } catch {
+    return;
+  }
+  switch (eventName) {
+    case "start":
+      handlers.onStart?.(parsed as { total: number });
+      break;
+    case "node":
+      handlers.onNode?.(
+        parsed as { completed: number; total: number; node: SubscriptionNode },
+      );
+      break;
+    case "error":
+      handlers.onError?.(parsed as { message: string });
+      break;
+    case "done":
+      handlers.onDone?.(parsed as { completed: number; total: number });
+      break;
+    default:
+      break;
+  }
+}
+
+function parseSseBlock(block: string, handlers: SpeedStreamHandlers): void {
+  const lines = block.split("\n");
+  let eventName = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      const value = line.slice(5);
+      dataLines.push(value.startsWith(" ") ? value.slice(1) : value);
+    }
+  }
+
+  if (dataLines.length > 0) {
+    dispatchSpeedStreamEvent(eventName, dataLines.join("\n"), handlers);
+  }
+}
+
+export async function testSubscriptionSpeedStream(
+  payload: {
+    node_ids?: number[];
+    subscription_id?: number;
+    mode?: "tcp" | "http" | "download";
+    concurrency?: number;
+  },
+  handlers: SpeedStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch("/api/admin/subscriptions/test-speed/stream", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}${response.statusText ? " " + response.statusText : ""}`;
+    let body: unknown = null;
+    try {
+      const text = await response.text();
+      if (text) {
+        body = JSON.parse(text);
+        if (
+          typeof body === "object" &&
+          body !== null &&
+          "message" in body &&
+          typeof (body as { message?: unknown }).message === "string" &&
+          (body as { message: string }).message
+        ) {
+          message = (body as { message: string }).message;
+        }
+      }
+    } catch {
+      // Ignore non-JSON error body
+    }
+    throw new ApiError(response.status, message, body, response.statusText);
+  }
+
+  if (!response.body) {
+    throw new Error("当前浏览器不支持流式响应读取");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  const drainBlocks = (flushAll: boolean) => {
+    // Normalize CRLF safely: hold back a trailing '\r' unless flushing at EOF.
+    const endsWithCR = !flushAll && buffer.endsWith("\r");
+    const safePart = endsWithCR ? buffer.slice(0, -1) : buffer;
+    let normalized = safePart.replace(/\r\n/g, "\n");
+    if (flushAll) {
+      normalized = normalized.replace(/\r/g, "\n");
+    }
+
+    const parts = normalized.split("\n\n");
+    if (flushAll) {
+      buffer = "";
+      for (const part of parts) {
+        if (part.trim()) parseSseBlock(part, handlers);
+      }
+    } else {
+      const remainder = parts.pop() ?? "";
+      for (const part of parts) {
+        if (part.trim()) parseSseBlock(part, handlers);
+      }
+      buffer = endsWithCR ? `${remainder}\r` : remainder;
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        drainBlocks(true);
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      drainBlocks(false);
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function testSubscriptionPurity(payload: {

@@ -14,8 +14,6 @@ import (
 var backupWhitelist = []string{
 	"favicon.ico",
 	"font.ttf",
-	"plugin/",
-	"plugin-data/",
 	"metrics.db",
 }
 

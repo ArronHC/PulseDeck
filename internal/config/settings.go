@@ -80,5 +80,4 @@ const (
 	TrafficLimitPercentageKey     = "traffic_limit_percentage"
 	TrafficDefaultTimezoneKey     = "traffic_default_timezone"
 	UpdatedAtKey                  = "updated_at"
-	PluginMarketSourcesKey        = "plugin_market_sources"
 )

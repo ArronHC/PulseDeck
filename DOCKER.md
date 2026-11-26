@@ -17,7 +17,7 @@ docker compose up -d
 
 - 默认拉取镜像：`ghcr.io/arronhc/pulsedeck:latest`（可通过 `PULSEDECK_IMAGE=ghcr.io/arronhc/pulsedeck:snapshot` 切换快照版）
 - 默认监听端口：`25774`（可通过 `KOMARI_PORT=8080 docker compose up -d` 自定义）
-- 数据持久化目录：`./data` 挂载到容器 `/app/data`（保存 SQLite 主库与指标库、Uptime 记录、订阅节点、已安装的插件与自定义 favicon）
+- 将 `./data` 挂载到容器 `/app/data`，持久化 SQLite 主库与指标库、Uptime 记录、订阅节点和自定义 favicon。
 
 ### 零交互自动初始化（可选）
 

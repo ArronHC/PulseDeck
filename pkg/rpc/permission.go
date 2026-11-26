@@ -5,8 +5,7 @@ package rpc
 // 匹配完整方法名（如 "admin:addClient"、"rpc.ping"）。判权时在所有匹配规则中取
 // 特异性（specificity）最高者：精确匹配 > 字面前缀更长的通配 > 全局 "*"。
 //
-// 该模型面向插件扩展：插件可用 Allow 声明任意粒度的规则（命名空间级 "ns:*" 或方法级），
-// 无需修改核心代码。
+// Allow 支持为整个命名空间（如 "ns:*"）或单个方法声明规则。
 //
 // 角色采用分级语义：guest < client < admin，规则声明所需最低角色。
 
@@ -91,7 +90,7 @@ func computeSpecificity(pattern string) (spec int, hasWildcard bool) {
 }
 
 // Allow 声明一条 ACL 规则：匹配 pattern 的方法允许 minRole 及以上等级的角色调用。
-// 同一 pattern 重复声明时覆盖原规则。供插件声明自定义权限。
+// 同一 pattern 重复声明时覆盖原规则。
 func Allow(pattern, minRole string) {
 	spec, hasWildcard := computeSpecificity(pattern)
 	rule := aclRule{pattern: pattern, minRole: minRole, specificity: spec, hasWildcard: hasWildcard}
@@ -197,4 +196,3 @@ func CheckPrincipal(p *Principal, method string) bool {
 	}
 	return p.HasRole(min)
 }
-

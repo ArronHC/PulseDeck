@@ -10,7 +10,6 @@ import (
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/internal/plugin"
 	"github.com/komari-monitor/komari/web/api"
 	"gorm.io/gorm"
 )
@@ -37,7 +36,6 @@ type onboardingCounts struct {
 	UptimeMonitors    int64 `json:"uptime_monitors"`
 	Subscriptions     int64 `json:"subscriptions"`
 	SubscriptionNodes int64 `json:"subscription_nodes"`
-	Plugins           int   `json:"plugins"`
 }
 
 type onboardingSteps struct {
@@ -118,7 +116,7 @@ func respondOnboarding(c *gin.Context, state onboardingState) {
 }
 
 func onboardingChecklist(db *gorm.DB) (onboardingCounts, onboardingSteps, error) {
-	counts := onboardingCounts{Plugins: len(plugin.List())}
+	counts := onboardingCounts{}
 	steps := onboardingSteps{}
 	for _, query := range []struct {
 		model any
