@@ -1,15 +1,36 @@
 # Fast CI Dockerfile for pre-built multi-arch binaries (used by GitHub Actions).
+# Uses Dockerfile.ci.dockerignore so only komari-linux-{amd64,arm64} enter the build context.
 FROM alpine:3.21
 
 WORKDIR /app
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG INSTALL_PROXY_CORE=none
+ARG MIHOMO_VERSION=v1.19.12
 
 RUN apk add --no-cache ca-certificates curl tzdata \
- && mkdir -p /app/data
+ && case "${INSTALL_PROXY_CORE}" in \
+      none) ;; \
+      sing-box) \
+        apk add --no-cache sing-box --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community \
+        && sing-box version ;; \
+      mihomo) \
+        case "${TARGETARCH}" in \
+          amd64) MIHOMO_ARCH="amd64-compatible" ;; \
+          arm64) MIHOMO_ARCH="arm64" ;; \
+          *) echo "Unsupported TARGETARCH for mihomo: ${TARGETARCH}" >&2; exit 1 ;; \
+        esac \
+        && curl -fsSL "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-${MIHOMO_ARCH}-${MIHOMO_VERSION}.gz" -o /tmp/mihomo.gz \
+        && gunzip -c /tmp/mihomo.gz > /usr/local/bin/mihomo \
+        && chmod 755 /usr/local/bin/mihomo \
+        && rm -f /tmp/mihomo.gz \
+        && /usr/local/bin/mihomo -v ;; \
+      *) echo "Invalid INSTALL_PROXY_CORE=${INSTALL_PROXY_CORE} (expected none, sing-box, or mihomo)" >&2; exit 1 ;; \
+    esac \
+ && mkdir -p /app/data /app/cache
 
-COPY --chmod=755 komari-${TARGETOS}-${TARGETARCH} /app/komari
+COPY --chmod=755 komari-${TARGETOS}-${TARGETARCH} /app/pulsedeck
 
 ENV GIN_MODE=release
 ENV KOMARI_LISTEN=0.0.0.0:25774
@@ -22,4 +43,4 @@ EXPOSE 25774
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -fsS http://127.0.0.1:25774/ping >/dev/null 2>&1 || curl -fsS http://127.0.0.1:25774/api/install/status >/dev/null 2>&1 || exit 1
 
-CMD ["/app/komari", "server"]
+CMD ["/app/pulsedeck", "server"]

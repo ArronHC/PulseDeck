@@ -1,0 +1,13 @@
+# Build from local source instead of pulling the prebuilt GHCR image:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# To include sing-box or mihomo for encrypted-node IPPure checks:
+#   INSTALL_PROXY_CORE=sing-box docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  pulsedeck:
+    image: pulsedeck:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_PROXY_CORE: ${INSTALL_PROXY_CORE:-none}

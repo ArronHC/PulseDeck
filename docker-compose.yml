@@ -1,12 +1,6 @@
 services:
   pulsedeck:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # Set to "sing-box" to enable encrypted-node IPPure exit checks inside the container
-        INSTALL_PROXY_CORE: none
-    image: pulsedeck:latest
+    image: ${PULSEDECK_IMAGE:-ghcr.io/arronhc/pulsedeck:latest}
     container_name: pulsedeck
     restart: unless-stopped
     ports:
@@ -15,6 +9,11 @@ services:
       GIN_MODE: release
       KOMARI_LISTEN: 0.0.0.0:25774
       TZ: ${TZ:-Asia/Shanghai}
+      # Optional: set both to skip the first-run web wizard and initialize automatically.
+      # Password must be >= 8 chars and contain uppercase, lowercase, and numbers.
+      # PULSEDECK_ADMIN_USER: admin
+      # PULSEDECK_ADMIN_PASS: ChangeMe123!
+      # PULSEDECK_SITENAME: PulseDeck
     volumes:
       - ./data:/app/data
       # Optional: mount a host mihomo or sing-box binary for encrypted-node IPPure checks

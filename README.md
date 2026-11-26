@@ -36,15 +36,17 @@ PulseDeck is a unified self-hosted status hub forked from [Komari](https://githu
 
 ## Quick Start
 
-### Docker Compose (Recommended)
+### Docker Compose (Recommended — Prebuilt Image, Zero Local Build)
 
 ```bash
 git clone https://github.com/ArronHC/PulseDeck.git
 cd PulseDeck
-docker compose up -d --build
+docker compose up -d
 ```
 
-Open `http://127.0.0.1:25774` to complete the first-run setup wizard. See [DOCKER.md](./DOCKER.md) for custom ports, persistent volumes, and optional `sing-box` / `mihomo` proxy core integration for encrypted-node IPPure checks.
+- Pulls the multi-arch GHCR image (`ghcr.io/arronhc/pulsedeck:latest`), ready in seconds even on 512 MB RAM VPSes.
+- Open `http://127.0.0.1:25774` to finish setup, or pass `PULSEDECK_ADMIN_USER` & `PULSEDECK_ADMIN_PASS` in `docker-compose.yml` for zero-click headless initialization.
+- Need a local source build or embedded `sing-box` / `mihomo` proxy core? Use `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` — see [DOCKER.md](./DOCKER.md).
 
 ### Build From Source
 

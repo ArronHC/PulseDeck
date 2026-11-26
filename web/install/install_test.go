@@ -2,6 +2,7 @@ package install
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -129,5 +130,59 @@ func TestInstallRejectsUnknownDSN(t *testing.T) {
 	var count int64
 	if err := db.Model(&models.User{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("failed DSN created users: count=%d err=%v", count, err)
+	}
+}
+
+func TestCompleteFromEnvSkipsWhenUnset(t *testing.T) {
+	_, db, _ := setupInstallRouter(t)
+	t.Setenv(EnvAdminUser, "")
+	t.Setenv(EnvAdminPass, "")
+	done, err := CompleteFromEnv(context.Background(), db)
+	if err != nil || done {
+		t.Fatalf("CompleteFromEnv(unset) = (%v, %v), want (false, nil)", done, err)
+	}
+}
+
+func TestCompleteFromEnvRejectsPartialAndWeakCredentials(t *testing.T) {
+	_, db, _ := setupInstallRouter(t)
+	t.Setenv(EnvAdminUser, "admin")
+	t.Setenv(EnvAdminPass, "")
+	if done, err := CompleteFromEnv(context.Background(), db); err == nil || done {
+		t.Fatalf("CompleteFromEnv(partial) = (%v, %v), want error", done, err)
+	}
+
+	t.Setenv(EnvAdminPass, "weakpass")
+	if done, err := CompleteFromEnv(context.Background(), db); err == nil || done {
+		t.Fatalf("CompleteFromEnv(weak) = (%v, %v), want error", done, err)
+	}
+}
+
+func TestCompleteFromEnvSucceedsWithDefaults(t *testing.T) {
+	_, db, _ := setupInstallRouter(t)
+	metricDSN := filepath.ToSlash(filepath.Join(t.TempDir(), "metrics.db"))
+	t.Setenv(EnvAdminUser, "opsadmin")
+	t.Setenv(EnvAdminPass, "StrongPass123!")
+	t.Setenv(EnvSiteName, "")
+	t.Setenv(EnvDescription, "")
+	t.Setenv(EnvMetricDSN, metricDSN)
+
+	done, err := CompleteFromEnv(context.Background(), db)
+	if err != nil || !done {
+		t.Fatalf("CompleteFromEnv(valid) = (%v, %v), want (true, nil)", done, err)
+	}
+
+	var user models.User
+	if err := db.First(&user, "username = ?", "opsadmin").Error; err != nil {
+		t.Fatalf("find headless admin: %v", err)
+	}
+	got, err := appconfig.GetAll()
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if got[appconfig.SitenameKey] != "PulseDeck" {
+		t.Errorf("sitename = %#v, want PulseDeck", got[appconfig.SitenameKey])
+	}
+	if got[metricstore.MetricDBDSNKey] != metricDSN {
+		t.Errorf("metric_dsn = %#v, want %q", got[metricstore.MetricDBDSNKey], metricDSN)
 	}
 }

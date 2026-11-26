@@ -1,9 +1,9 @@
 name: Publish Docker Image on Main
 
 on:
-  #push:
-  #  branches:
-  #    - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
@@ -101,6 +101,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
             type=raw,value=${{ github.ref_name }}
             type=sha,format=short
 
