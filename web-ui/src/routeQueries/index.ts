@@ -5,7 +5,6 @@
  * 不要导入页面组件或 React：这里会进入首屏包。
  */
 import "./admin";
-import "./dashboard";
 import "./ops";
 import "./settings";
 import "./appearance";

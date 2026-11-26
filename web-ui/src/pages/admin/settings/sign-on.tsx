@@ -164,7 +164,7 @@ const ApiCard = ({ apiKey }: { apiKey: string | undefined }) => {
       savedValue={apiKey}
       title={t("settings.api.title")}
       description={t("settings.api.description")}
-      prefix="komari-"
+      prefix="pulsedeck-"
       length={32}
     />
   );

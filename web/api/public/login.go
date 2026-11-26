@@ -20,9 +20,11 @@ type LoginRequest struct {
 	TwoFa    string `json:"2fa_code"`
 }
 
-const sessionCookieMaxAge = 2592000
+// SessionCookieMaxAge is the lifetime of an admin session in seconds.
+const SessionCookieMaxAge = 2592000
 
-func setSessionCookie(c *gin.Context, value string, maxAge int) {
+// SetSessionCookie sets or clears the browser's admin session cookie.
+func SetSessionCookie(c *gin.Context, value string, maxAge int) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "session_token",
 		Value:    value,
@@ -82,12 +84,12 @@ func Login(c *gin.Context) {
 		}
 	}
 	// Create session
-	session, err := accounts.CreateSession(uuid, sessionCookieMaxAge, c.Request.UserAgent(), c.ClientIP(), "password")
+	session, err := accounts.CreateSession(uuid, SessionCookieMaxAge, c.Request.UserAgent(), c.ClientIP(), "password")
 	if err != nil {
 		api.RespondError(c, http.StatusInternalServerError, "Failed to create session: "+err.Error())
 		return
 	}
-	setSessionCookie(c, session, sessionCookieMaxAge)
+	SetSessionCookie(c, session, SessionCookieMaxAge)
 	msg := fmt.Sprintf("Logged in (password): user=%s, 2fa=%t", userLabel, used2FA)
 	if ua != "" {
 		msg += ", ua=" + ua
@@ -108,7 +110,7 @@ func Logout(c *gin.Context) {
 		}
 	}
 	accounts.DeleteSession(session)
-	setSessionCookie(c, "", -1)
+	SetSessionCookie(c, "", -1)
 	auditlog.Log(c.ClientIP(), actorUUID, msg, "logout")
 	c.Redirect(302, "/")
 }

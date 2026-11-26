@@ -1,4 +1,4 @@
-// 页面数据预取登记：exec / pprof / 关于（写法见 ./admin.ts 与 @/lib/routeData）
+// 页面数据预取登记：exec / pprof（写法见 ./admin.ts 与 @/lib/routeData）
 import { api } from "@/lib/http";
 import { prefetchRouteQuery, routeQuery, type RouteQuery } from "@/lib/routeData";
 import { registerRouteData } from "@/lib/routeRegistry";
@@ -97,18 +97,3 @@ export const pprofSummaryQuery = routeQuery<PprofSummaryResult>("system/pprof/su
 });
 
 registerRouteData("/admin/pprof", () => prefetchRouteQuery(pprofSummaryQuery));
-
-// ---------------------------------------------------------------------------
-// 关于：README（外部 raw.githubusercontent.com）。许可证、依赖列表是打包进来的静态数据，没有别的请求
-// ---------------------------------------------------------------------------
-
-export const aboutReadmeQuery = routeQuery("system/about/readme", async () => {
-  const res = await fetch(
-    "https://raw.githubusercontent.com/komari-monitor/komari/refs/heads/main/README.md",
-  );
-  if (!res.ok) throw new Error(String(res.status));
-  return res.text();
-});
-
-// README 在 GitHub 上，可能很慢或访问不了：只预取，不让页面切换等它（README 区自己显示加载中）
-registerRouteData("/admin/about", () => prefetchRouteQuery(aboutReadmeQuery, { gate: false }));

@@ -4,7 +4,7 @@
 
 [English](./README.md) | [简体中文](./README_zh-cn.md) | [Docker 部署指南](./DOCKER.md)
 
-PulseDeck 基于 [Komari](https://github.com/komari-monitor/komari) 深度二开，采用极简清爽的**双层顶部标签页**布局，在一个网站内统一汇总你的**服务器探针（Komari）**、**服务可用性监控（Uptime Kuma 风格）**以及**机场订阅与节点地图/测速/IPPure 纯净度检测（塔台 Tower 风格）**，并完整保留了 Komari 主题商城能力。
+PulseDeck 是一款独立设计的全栈自托管观测与节点管理平台，仅复用 [Komari](https://github.com/komari-monitor/komari) 的底层探针与插件引擎，不照搬其产品界面与后台结构。系统采用**前台严格只读展示 + 独立重构管理后台**的前后台分离架构，将**服务器探针**、**服务可用性监控（Uptime Kuma 风格）**与**订阅节点地图/测速/IPPure 纯净度检测（Tower 风格）**统一整合，并完整保留插件扩展能力。
 
 > [!WARNING]
 > PulseDeck 是一款自托管监控与管理工具，请仅部署在你拥有或已获得授权管理的服务器与网络环境中。
@@ -14,14 +14,17 @@ PulseDeck 基于 [Komari](https://github.com/komari-monitor/komari) 深度二开
 ## 核心特性
 
 - **总览 Bento 仪表盘（`/`）**：参考 Cloudflare 模块化总览风格，一屏展示探针在线与资源负载、Uptime 24h 可用率与延迟、订阅节点可用率与纯净度占比、最近事件时间线及全球节点分布预览。
-- **服务器探针 + Komari 主题商城（`/servers`）**：完整保留 Komari 实时 WebSocket 上报、历史曲线、分组管理、网页终端与后台管理；支持在 Tab 2 独立沙箱中直接安装与切换 **Komari 主题商城** 的任意第三方主题，不会劫持顶部标签栏及其他服务页面。
-- **服务状态监控（`/uptime`）**：内置轻量级探测引擎（支持 `HTTP/HTTPS`、`关键词`、`TCP`、`Ping`），提供 **60 格心跳色块条**、响应耗时曲线、30 天历史保留与故障事件时间线；同时支持一键同步外部 **Uptime Kuma** 状态页。
-- **订阅管理 · 世界地图 · 测速 · IPPure 纯净度（`/subscriptions`）**：
+- **前后台职责清晰分离**：公开前台（`/`、`/servers`、`/uptime`、`/subscriptions`）均为纯只读状态页；一切服务器探针节点、Uptime 监控、Uptime Kuma 同步源、代理订阅、测速与 IPPure 检测均收口至全新设计的 **PulseDeck 管理控制台**（`/admin/overview`、`/admin/servers`、`/admin/uptime`、`/admin/subscriptions`）统一管理。
+- **首次运行交互式安装向导与新手引导**：内置 5 步交互式首次初始化向导（`/install`，支持密码强度实时校验、公开/私有站点选择、实时指标库连接测试 `POST /api/install/test-db` 与自动登录），进入后台后提供交互式快速上手弹窗与实时同步数据库的 4 步初始化清单（`/api/admin/onboarding`）。
+- **服务器探针（`/servers` & `/admin/servers`）**：基于 Komari Agent v2 底层上报引擎，提供实时 WebSocket 负载监控、历史曲线、分组管理、Ping 任务与流量/到期统计；移除了冗余的远程工作台（WebSSH/文件管理器）与第三方主题市场。
+- **服务状态监控（`/uptime` & `/admin/uptime`）**：内置轻量级探测引擎（支持 `HTTP/HTTPS`、`关键词`、`TCP`、`Ping`），提供 **60 格心跳色块条**、响应耗时曲线、30 天历史保留与故障事件时间线；支持同步外部 **Uptime Kuma** 状态页。
+- **订阅管理 · 世界地图 · 测速 · IPPure 纯净度（`/subscriptions` & `/admin/subscriptions`）**：
   - 支持 `Base64` / URI 节点行（`VMess / VLESS / Trojan / Shadowsocks / Hysteria2 / TUIC / SOCKS5 / HTTP`）、`Clash / Mihomo YAML`、`Sing-box JSON` 订阅解析，自动读取 `Subscription-Userinfo` 展示流量进度与到期倒计时。
   - 内置离线地区识别与矢量**世界地图**（支持「延迟分布 / IP 纯净度」双视图切换与悬停浮窗，点击国家联动筛选节点）。
-  - 支持并发延迟测速，并内置 **IPPure 纯净度测试**（调用 `https://my.ippure.com/v1/info`，展示欺诈风险分 `fraudScore`、住宅/机房 IP、原生/广播 IP、ASN 与精准城市坐标）。
+  - 在后台支持并发延迟测速与 **IPPure 纯净度测试**（调用 `https://my.ippure.com/v1/info`，展示欺诈风险分 `fraudScore`、住宅/机房 IP、原生/广播 IP、ASN 与精准城市坐标）。
+- **插件系统保留（`/admin/plugins` & `/admin/plugins/market`）**：完整保留插件安装、插件市场、插件配置与插件自定义页面能力。
 - **全局 `⌘K` 快捷搜索与浅/深色切换**：跨模块即时搜索探针主机、Uptime 监控项与订阅节点。
-- **单文件二进制 & Docker 一键部署**：前端构建后内嵌进 Go 单文件可执行程序，同时提供多阶段 `Dockerfile` 与 `docker-compose.yml`。
+- **单文件二进制 & Docker 一键部署**：前端构建后内嵌进 Go 单文件可执行程序，同时提供预构建多架构镜像与多阶段 `Dockerfile`。
 
 ---
 
@@ -66,7 +69,7 @@ docker compose up -d
 
 ## 致谢
 
-- [komari-monitor/komari](https://github.com/komari-monitor/komari) & [komari-web](https://github.com/komari-monitor/komari-web) — 探针核心服务端、Agent 协议、主题商城与管理后台基础。
+- [komari-monitor/komari](https://github.com/komari-monitor/komari) — 底层服务器探针引擎、Agent v2 协议、指标存储与插件运行时基础。
 - [louislam/uptime-kuma](https://github.com/louislam/uptime-kuma) — 心跳状态条交互与状态页同步兼容。
 - [pengchujin/tower](https://github.com/pengchujin/tower) — 订阅流量/到期管理、离线地区识别与世界地图灵感。
 - [IPPure](https://my.ippure.com/v1/info) — IP 欺诈风险评分与住宅/原生属性检测接口。

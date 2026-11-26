@@ -2,6 +2,8 @@ package admin
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -11,14 +13,55 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/internal/config"
 	"gorm.io/gorm"
 )
 
-// marketDownloadMaxBytes limits the response size of a market download.
-const marketDownloadMaxBytes = 100 << 20
+const (
+	marketCatalogMaxSize  = 2 << 20
+	marketPackageMaxSize  = 100 << 20
+	marketCacheTTL        = 10 * time.Minute
+	marketDownloadTimeout = 45 * time.Second
+)
 
-const marketDownloadTimeout = 45 * time.Second
+func newMarketSourceID() (string, error) {
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+// isValidMarketShort validates a market entry short name.
+func isValidMarketShort(short string) bool {
+	if short == "" || short == "default" {
+		return false
+	}
+
+	for _, r := range short {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-') {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isMarketText reports whether a market entry field is usable: a non-empty
+// string or an i18n object with at least one non-empty value.
+func isMarketText(value any) bool {
+	return models.IsLocalizedText(value)
+}
+
+func validateMarketURLSyntax(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil {
+		return errors.New("must be a valid HTTP or HTTPS URL")
+	}
+	return nil
+}
 
 var blockedMarketIPPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),

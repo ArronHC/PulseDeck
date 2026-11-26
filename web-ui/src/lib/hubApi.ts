@@ -1,5 +1,10 @@
 import { api, requestData } from "@/lib/http";
 import type {
+  AdminOnboardingState,
+  AdminOnboardingUpdatePayload,
+  InstallCompletePayload,
+  InstallStatusData,
+  InstallTestDBResult,
   IPPureInfo,
   KumaSource,
   OverviewData,
@@ -93,6 +98,48 @@ export function syncKumaSource(id: number): Promise<unknown> {
 
 export function fetchSubscriptions(): Promise<SubscriptionItem[]> {
   return api.getData<SubscriptionItem[]>("/api/subscriptions");
+}
+
+export function fetchAdminSubscriptions(): Promise<SubscriptionItem[]> {
+  return api.getData<SubscriptionItem[]>("/api/admin/subscriptions");
+}
+
+// ============================================================================
+// Install Wizard & Admin Onboarding
+// ============================================================================
+
+export function fetchInstallStatus(): Promise<InstallStatusData> {
+  return requestData<InstallStatusData>("/api/install/status", { cache: "no-store" });
+}
+
+export function testInstallDatabase(metric_dsn: string): Promise<InstallTestDBResult> {
+  return requestData<InstallTestDBResult>("/api/install/test-db", {
+    method: "POST",
+    json: { metric_dsn },
+    cache: "no-store",
+  });
+}
+
+export function completeInstall(payload: InstallCompletePayload): Promise<unknown> {
+  return requestData("/api/install/complete", {
+    method: "POST",
+    json: payload,
+    cache: "no-store",
+  });
+}
+
+export function fetchAdminOnboarding(): Promise<AdminOnboardingState> {
+  return api.getData<AdminOnboardingState>("/api/admin/onboarding", {
+    cache: "no-store",
+  });
+}
+
+export function updateAdminOnboarding(
+  payload: AdminOnboardingUpdatePayload,
+): Promise<AdminOnboardingState> {
+  return api.postData<AdminOnboardingState>("/api/admin/onboarding", payload, {
+    cache: "no-store",
+  });
 }
 
 export function fetchSubscriptionNodes(params?: {

@@ -1,196 +1,266 @@
-import { lazy, Suspense, useState, useEffect } from "react";
-import { Skeletonize, skeletonText } from "@/components/ui/skeleton";
-import { AutoHeight, SlideSwap } from "@/components/motion";
-import { useTranslation } from "react-i18next";
-import { SquareArrowOutUpRight } from "lucide-react";
-import { SegmentedControl } from "@radix-ui/themes";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, Blocks, Globe, Server, ShieldCheck } from "lucide-react";
+import { useRPC2Call } from "@/contexts/RPC2Context";
+import { SettingCardCollapse } from "@/components/admin/SettingCard";
 import { Apache2_LICENSE, MIT_LICENSE } from "@/utils/field";
 import webDependencies from "@/utils/openSource.web.json";
 import goDependencies from "@/utils/openSource.go.json";
-import { SettingCardCollapse } from "@/components/admin/SettingCard";
-import PageHeader from "@/components/PageHeader";
-import { useRouteQuery } from "@/lib/routeData";
-import { aboutReadmeQuery } from "@/routeQueries/system";
 
-const loadMarkdownRenderer = () => import("@/components/MarkdownRenderer");
-const MarkdownRenderer = lazy(loadMarkdownRenderer);
-const loadEulaModule = () => import("@/utils/eula");
-/**
- * README 还没下载完时的占位：与 markdown-body 同样的标签结构（标题、段落、列表），
- * Skeletonize 把文字画成等宽的条；README 到达后外层 AutoHeight 把高度弹簧到真实长度。
- */
-const ReadmePlaceholder = () => (
-  <div className="p-km-block">
-    <h1>{skeletonText(12)}</h1>
-    <p>{skeletonText(60)}</p>
-    <p>{skeletonText(44)}</p>
-    <h2>{skeletonText(9)}</h2>
-    <ul>
-      {[28, 34, 22, 30].map((chars, index) => (
-        <li key={index}>{skeletonText(chars)}</li>
-      ))}
-    </ul>
-    <h2>{skeletonText(11)}</h2>
-    <p>{skeletonText(52)}</p>
-  </div>
-);
-
-/** 视图顺序：用于判断切换方向（overlay 的「方向感」）。 */
-const VIEW_ORDER = ["open_source", "eula", "readme"] as const;
+const ACKNOWLEDGMENTS = [
+  {
+    name: "Komari",
+    role: "底层探针、WebSocket/RPC 协议与插件扩展引擎",
+    url: "https://github.com/komari-monitor/komari",
+    license: "MIT",
+  },
+  {
+    name: "Uptime Kuma",
+    role: "心跳监测理念与外部 Status Page 兼容数据源",
+    url: "https://github.com/louislam/uptime-kuma",
+    license: "MIT",
+  },
+  {
+    name: "IPPure",
+    role: "出口 IP 欺诈分、ASN 与住宅/原生 IP 纯净度识别接口",
+    url: "https://ippure.com",
+    license: "Service",
+  },
+  {
+    name: "Radix Themes & Tailwind CSS",
+    role: "界面基础原语与设计令牌系统",
+    url: "https://tailwindcss.com",
+    license: "MIT",
+  },
+];
 
 export default function AboutPage() {
-  const { t, i18n } = useTranslation();
-  const [view, setView] = useState("open_source");
-  const [direction, setDirection] = useState(1);
-  const [eulaText, setEulaText] = useState<string>("");
+  const { call } = useRPC2Call();
+  const [versionInfo, setVersionInfo] = useState<{
+    version?: string;
+    hash?: string;
+  } | null>(null);
+  const [tab, setTab] = useState<"overview" | "licenses">("overview");
+
   useEffect(() => {
-    if (view !== "eula") return;
     let active = true;
-    void loadEulaModule().then(({ getEula }) => {
-      if (active) setEulaText(getEula(i18n.language));
-    });
+    void call<unknown, { version?: string; hash?: string }>("common:getVersion")
+      .then((res) => {
+        if (active && res) setVersionInfo(res);
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [view, i18n.language]);
-  // README 在 Readme 分段里才显示，切换页面时不等它：routePreload 已提前请求，
-  // 挂载后再接手（不随导航挂起），用户切到 Readme 时多半已经到了，没到就显示原来的骨架
-  const [readmeArmed, setReadmeArmed] = useState(false);
-  useEffect(() => setReadmeArmed(true), []);
-  const readme = useRouteQuery(readmeArmed ? aboutReadmeQuery : null);
-  const markdown = readme.data ?? "";
-  const readmeFailed = Boolean(readme.error);
+  }, [call]);
 
-  const dependencies = [
-    ...webDependencies,
-    ...goDependencies.map((entry) => ({ ...entry, dev: false })),
-  ].map((entry) => ({
-    ...entry,
-    license: entry.license === "(Unlicense OR Apache-2.0)" ? "Apache-2.0" : entry.license,
-  })).sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || a.version.localeCompare(b.version));
+  const dependencies = useMemo(
+    () =>
+      [
+        ...webDependencies,
+        ...goDependencies.map((entry) => ({ ...entry, dev: false })),
+      ]
+        .map((entry) => ({
+          ...entry,
+          license:
+            entry.license === "(Unlicense OR Apache-2.0)"
+              ? "Apache-2.0"
+              : entry.license,
+        }))
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name, "en", { sensitivity: "base" }) ||
+            a.version.localeCompare(b.version),
+        ),
+    [],
+  );
 
   return (
-    <div className="km-page km-page-admin-about km-about-content">
-      <PageHeader className="km-about-title" title={t("common.about")} />
-      {/* 分段切换与它控制的内容是同一区块：两者之间 block */}
-      <div className="flex flex-col gap-km-block">
-      <SegmentedControl.Root
-        defaultValue={view}
-        onValueChange={(next) => {
-          // surface 层：按分段控件左右顺序给内容一个方向，避免无意义的原地淡入
-          setDirection(
-            VIEW_ORDER.indexOf(next as (typeof VIEW_ORDER)[number]) >=
-              VIEW_ORDER.indexOf(view as (typeof VIEW_ORDER)[number])
-              ? 1
-              : -1,
-          );
-          setView(next);
-        }}
-      >
-        <SegmentedControl.Item value="open_source">
-          {t("about.open_source_title")}
-        </SegmentedControl.Item>
-        <SegmentedControl.Item
-          value="eula"
-          onPointerEnter={() => void loadEulaModule()}
-          onFocus={() => void loadEulaModule()}
-        >
-          {t("eula.title")}
-        </SegmentedControl.Item>
-        <SegmentedControl.Item
-          value="readme"
-          onPointerEnter={() => void loadMarkdownRenderer()}
-          onFocus={() => void loadMarkdownRenderer()}
-        >
-          Readme
-        </SegmentedControl.Item>
-      </SegmentedControl.Root>
-      {/* surface 层：三段内容切换时按方向轻微位移 + 淡入 */}
-      <AutoHeight className="overflow-x-clip">
-      <SlideSwap swapKey={view} direction={direction}>
-      {(() => {
-        switch (view) {
-          case "eula":
-            return (
-              <>
-                <div className="km-about-license license-text p-km-block border rounded-md bg-accent-1 flex flex-col gap-2">
-                  <Skeletonize loading={!eulaText}>
-                    <pre className="text-wrap">
-                      {eulaText || skeletonText(48)}
-                    </pre>
-                  </Skeletonize>
-                </div>
-              </>
-            );
-          case "open_source":
-            return (
-              <div className="flex flex-col gap-km-block">
-                <div className="km-about-license text-foreground flex flex-col gap-km-block">
-                  <SettingCardCollapse
-                    title="MIT License"
-                    description="Copyright (C) 2025 Komari Monitor"
-                  >
-                    <pre className="text-wrap">{MIT_LICENSE}</pre>
-                  </SettingCardCollapse>
-                  <SettingCardCollapse
-                    title="Apache License"
-                    description="Version 2.0, January 2004"
-                  >
-                    <pre className="text-wrap">{Apache2_LICENSE}</pre>
-                  </SettingCardCollapse>
-                </div>
-                {/* 区块小标题：离上方许可证卡片 section，离下方列表 group */}
-                <h2 className="km-section-title text-xl font-semibold text-foreground">
-                  {t("about.open_source")}
-                </h2>
-                <div className="km-about-copyright copyright text-sm text-gray-500 dark:text-gray-400 flex flex-col gap-km-block">
-                  <ul className="list-disc list-inside break-words">
-                    {dependencies.map((entry) => (
-                      <li key={entry.name + "@" + entry.version}>
-                        <a href={entry.url} target="_blank" rel="noreferrer" className="text-accent-11 hover:underline">{entry.name}</a>
-                        {" "}<span>{entry.version.startsWith("v") ? entry.version : `v${entry.version}`}</span>
-                        {" · "}<span>{entry.license}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p>Twemoji © Twitter, Inc. and other contributors · {t("about.twemoji_notice")} · <a className="text-accent-11 hover:underline" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC-BY-4.0</a></p>
-                  <p>{t("about.ai")}</p>
-                </div>
-              </div>
-            );
-          case "readme":
-            return (
-              <div className="flex flex-col gap-km-group">
-                {/* 卡片内的局部加载：不用整页骨架（那会让整页再淡入一次），只把这块画成同结构的骨架 */}
-                <AutoHeight className="km-about-changelog markdown-body border border-muted/20 rounded-md">
-                  <Skeletonize loading={!markdown && !readmeFailed} label>
-                    {readmeFailed ? (
-                      <p className="text-sm text-muted-foreground">README unavailable.</p>
-                    ) : markdown ? (
-                      <Suspense fallback={<ReadmePlaceholder />}>
-                        <MarkdownRenderer>{markdown}</MarkdownRenderer>
-                      </Suspense>
-                    ) : (
-                      <ReadmePlaceholder />
-                    )}
-                  </Skeletonize>
-                </AutoHeight>
-                <a
-                  href="https://github.com/komari-monitor/komari/blob/main/README.md"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex flex-row gap-2 text-sm items-center"
-                >
-                  {t("about.readme_open_in_new_tab")}
-                  <SquareArrowOutUpRight size="16"></SquareArrowOutUpRight>
-                </a>
-              </div>
-            );
-        }
-      })()}
-      </SlideSwap>
-      </AutoHeight>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
+            关于 PulseDeck
+          </h1>
+          <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
+            一体化自托管服务器探针、服务可用性与代理节点可观测性控制台
+          </p>
+        </div>
+
+        <div className="inline-flex rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setTab("overview")}
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+              tab === "overview"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+            }`}
+          >
+            产品与架构
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("licenses")}
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+              tab === "licenses"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+            }`}
+          >
+            开源致谢与许可证
+          </button>
+        </div>
       </div>
+
+      {tab === "overview" ? (
+        <div className="space-y-5">
+          {/* Product Identity Card */}
+          <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-surface)] p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 14h4l2-7 4 14 2-7h4" />
+                  </svg>
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-semibold text-[var(--hub-ink)]">
+                      PulseDeck v2
+                    </h2>
+                    <span className="rounded-full border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2 py-0.5 font-mono text-[11px] text-[var(--hub-muted)]">
+                      {versionInfo?.version
+                        ? `${versionInfo.version}${versionInfo.hash ? ` (${versionInfo.hash.slice(0, 7)})` : ""}`
+                        : "v2.0"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
+                    前台只读状态展示 · 后台统一资产管理 · 完整插件扩展生态
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
+                <Server className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <div className="mt-2.5 text-xs font-semibold">探针节点引擎</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
+                  实时指标采集、Ping 延迟任务、流量配额与账单追踪。
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
+                <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <div className="mt-2.5 text-xs font-semibold">服务可用性监控</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
+                  HTTP/Keyword/TCP/Ping 定时探测与 Uptime Kuma 同步源。
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
+                <Globe className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                <div className="mt-2.5 text-xs font-semibold">订阅与 IP 纯净度</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
+                  机场订阅解析、全球拓扑分布图、并发测速与 IPPure 风险评估。
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
+                <Blocks className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <div className="mt-2.5 text-xs font-semibold">插件扩展机制</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
+                  支持插件市场安装、独立权限沙箱、自定义页面与通知渠道扩展。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Core Acknowledgments */}
+          <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-surface)] p-6">
+            <div className="flex items-center gap-2 border-b border-[var(--hub-border)] pb-3">
+              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
+                核心技术栈与开源致谢
+              </h3>
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {ACKNOWLEDGMENTS.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-3.5"
+                >
+                  <div>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-semibold text-[var(--hub-ink)] hover:underline"
+                    >
+                      {item.name}
+                    </a>
+                    <p className="mt-1 text-[11px] text-[var(--hub-muted)]">
+                      {item.role}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2 py-0.5 font-mono text-[10px] text-[var(--hub-muted)]">
+                    {item.license}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div className="space-y-3">
+            <SettingCardCollapse
+              title="MIT License"
+              description="PulseDeck & Komari Engine Open Source License"
+            >
+              <pre className="text-wrap text-xs">{MIT_LICENSE}</pre>
+            </SettingCardCollapse>
+            <SettingCardCollapse
+              title="Apache License 2.0"
+              description="Version 2.0, January 2004"
+            >
+              <pre className="text-wrap text-xs">{Apache2_LICENSE}</pre>
+            </SettingCardCollapse>
+          </div>
+
+          <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--hub-ink)]">
+              第三方开源依赖 ({dependencies.length})
+            </h2>
+            <ul className="mt-3 grid grid-cols-1 gap-1.5 text-xs text-[var(--hub-muted)] sm:grid-cols-2">
+              {dependencies.map((entry) => (
+                <li key={`${entry.name}@${entry.version}`} className="truncate">
+                  <a
+                    href={entry.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-[var(--hub-ink)] hover:underline"
+                  >
+                    {entry.name}
+                  </a>{" "}
+                  <span className="font-mono text-[11px]">
+                    {entry.version.startsWith("v")
+                      ? entry.version
+                      : `v${entry.version}`}
+                  </span>
+                  {" · "}
+                  <span>{entry.license}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

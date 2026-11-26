@@ -466,7 +466,6 @@ func doInitialize() error {
 		&models.PingTask{},
 		&models.OidcProvider{},
 		&models.MessageSenderProvider{},
-		&models.ThemeConfiguration{},
 		&models.PluginConfiguration{},
 		&models.UptimeMonitor{},
 		&models.UptimeHeartbeat{},

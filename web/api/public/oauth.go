@@ -80,7 +80,7 @@ func OAuthCallback(c *gin.Context) {
 			fmt.Sprintf("Bound external account (OAuth): user=%s, provider=%s, sso_id=%s", auditlog.FormatUser(user.Username, user.UUID), providerName, sso_id),
 			"login",
 		)
-		c.Redirect(302, "/admin/dashboard")
+		c.Redirect(302, "/admin/overview")
 		return
 	}
 
@@ -101,19 +101,19 @@ func OAuthCallback(c *gin.Context) {
 	}
 
 	// 创建会话
-	session, err := accounts.CreateSession(user.UUID, sessionCookieMaxAge, c.Request.UserAgent(), c.ClientIP(), "oauth")
+	session, err := accounts.CreateSession(user.UUID, SessionCookieMaxAge, c.Request.UserAgent(), c.ClientIP(), "oauth")
 	if err != nil {
 		c.JSON(500, gin.H{"status": "error", "message": err.Error()})
 		return
 	}
 
 	// 设置cookie并返回
-	setSessionCookie(c, session, sessionCookieMaxAge)
+	SetSessionCookie(c, session, SessionCookieMaxAge)
 	ua := auditlog.Truncate(strings.TrimSpace(c.Request.UserAgent()), 160)
 	msg := fmt.Sprintf("Logged in (OAuth): user=%s, provider=%s, sso_id=%s", auditlog.FormatUser(user.Username, user.UUID), providerName, sso_id)
 	if ua != "" {
 		msg += ", ua=" + ua
 	}
 	auditlog.Log(c.ClientIP(), user.UUID, msg, "login")
-	c.Redirect(302, "/admin/dashboard")
+	c.Redirect(302, "/admin/overview")
 }

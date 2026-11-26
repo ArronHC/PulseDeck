@@ -407,6 +407,16 @@ func Set(key string, value any) error {
 }
 
 func SetMany(cst map[string]any) error {
+	return setMany(db, cst, true)
+}
+
+// SetManyWithDB writes settings through the supplied database or transaction.
+// Use it for bootstrap writes before config subscriptions are active.
+func SetManyWithDB(gdb *gorm.DB, cst map[string]any) error {
+	return setMany(gdb, cst, false)
+}
+
+func setMany(gdb *gorm.DB, cst map[string]any, notify bool) error {
 	var items []ConfigItem
 	for k, v := range cst {
 		bytes, err := json.Marshal(v)
@@ -422,6 +432,16 @@ func SetMany(cst map[string]any) error {
 		return nil
 	}
 
+	write := func() error {
+		return gdb.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "key"}},
+			DoUpdates: clause.AssignmentColumns([]string{"value"}),
+		}).Create(&items).Error
+	}
+	if !notify {
+		return write()
+	}
+
 	keys := make([]string, 0, len(items))
 	newVal := make(map[string]any, len(items))
 	for _, it := range items {
@@ -435,7 +455,7 @@ func SetMany(cst map[string]any) error {
 	oldVal := map[string]any{}
 	if len(keys) > 0 {
 		var oldItems []ConfigItem
-		if err := db.Where("key IN ?", keys).Find(&oldItems).Error; err == nil {
+		if err := gdb.Where("key IN ?", keys).Find(&oldItems).Error; err == nil {
 			for _, oi := range oldItems {
 				var parsed any
 				if err := json.Unmarshal([]byte(oi.Value), &parsed); err == nil {
@@ -445,11 +465,7 @@ func SetMany(cst map[string]any) error {
 		}
 	}
 
-	err := db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"value"}),
-	}).Create(&items).Error
-	if err != nil {
+	if err := write(); err != nil {
 		return err
 	}
 

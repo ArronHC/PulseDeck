@@ -13,6 +13,7 @@ import (
 	"github.com/komari-monitor/komari/utils"
 	"github.com/komari-monitor/komari/utils/geoip"
 	"github.com/komari-monitor/komari/utils/messageSender"
+	"gorm.io/gorm"
 )
 
 // GetAllSessions 获取所有会话
@@ -24,17 +25,9 @@ func GetAllSessions() ([]models.Session, error) {
 
 // CreateSession 创建新会话
 func CreateSession(uuid string, expires int, userAgent, ip, login_method string) (string, error) {
-	db := dbcore.GetDBInstance()
-	session := utils.GenerateRandomString(32)
-
-	sessionRecord := models.Session{
-		UUID:         uuid,
-		Session:      session,
-		Expires:      time.Now().UTC().Add(time.Duration(expires) * time.Second),
-		UserAgent:    userAgent,
-		Ip:           ip,
-		LoginMethod:  login_method,
-		LatestOnline: time.Now().UTC(),
+	session, err := CreateSessionWithDB(dbcore.GetDBInstance(), uuid, expires, userAgent, ip, login_method)
+	if err != nil {
+		return "", err
 	}
 	go func() {
 		LoginNotification, _ := config.GetAs[bool](config.LoginNotificationKey, false)
@@ -54,7 +47,23 @@ func CreateSession(uuid string, expires int, userAgent, ip, login_method string)
 		}
 	}()
 
-	return session, db.Create(&sessionRecord).Error
+	return session, nil
+}
+
+// CreateSessionWithDB persists a session using the supplied database or transaction.
+func CreateSessionWithDB(db *gorm.DB, uuid string, expires int, userAgent, ip, loginMethod string) (string, error) {
+	session := utils.GenerateRandomString(32)
+	now := time.Now().UTC()
+	record := models.Session{
+		UUID:         uuid,
+		Session:      session,
+		Expires:      now.Add(time.Duration(expires) * time.Second),
+		UserAgent:    userAgent,
+		Ip:           ip,
+		LoginMethod:  loginMethod,
+		LatestOnline: now,
+	}
+	return session, db.Create(&record).Error
 }
 
 // GetSession 根据会话 ID 获取 UUID

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,9 +19,12 @@ import (
 	"github.com/komari-monitor/komari/database/models"
 	appconfig "github.com/komari-monitor/komari/internal/config"
 	"github.com/komari-monitor/komari/internal/metricstore"
+	"github.com/komari-monitor/komari/utils"
 	logger "github.com/komari-monitor/komari/utils/log"
 	"github.com/komari-monitor/komari/web/api"
+	publicapi "github.com/komari-monitor/komari/web/api/public"
 	"github.com/komari-monitor/komari/web/backup"
+	"github.com/komari-monitor/komari/web/public"
 	"github.com/komari-monitor/komari/web/upload"
 	"gorm.io/gorm"
 )
@@ -34,6 +38,9 @@ const (
 	EnvSiteName    = "PULSEDECK_SITENAME"
 	EnvDescription = "PULSEDECK_DESCRIPTION"
 	EnvMetricDSN   = "PULSEDECK_METRIC_DSN"
+	EnvPrivateSite = "PULSEDECK_PRIVATE_SITE"
+
+	defaultMetricDSN = "./data/metrics.db"
 )
 
 // CompleteFromEnv performs headless first-run initialization when both
@@ -52,15 +59,23 @@ func CompleteFromEnv(ctx context.Context, db *gorm.DB) (bool, error) {
 
 	sitename := strings.TrimSpace(os.Getenv(EnvSiteName))
 	if sitename == "" {
-		sitename = "PulseDeck"
+		sitename = appconfig.DefaultSitename
 	}
 	description := strings.TrimSpace(os.Getenv(EnvDescription))
 	if description == "" {
-		description = "All-in-one self-hosted server probe, uptime, and node observability deck."
+		description = appconfig.DefaultDescription
 	}
 	metricDSN := strings.TrimSpace(os.Getenv(EnvMetricDSN))
 	if metricDSN == "" {
-		metricDSN = "./data/metrics.db"
+		metricDSN = defaultMetricDSN
+	}
+	privateSite := false
+	if raw := strings.TrimSpace(os.Getenv(EnvPrivateSite)); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return false, fmt.Errorf("%s must be a boolean", EnvPrivateSite)
+		}
+		privateSite = value
 	}
 
 	req := completeRequest{
@@ -69,11 +84,12 @@ func CompleteFromEnv(ctx context.Context, db *gorm.DB) (bool, error) {
 		Sitename:    sitename,
 		Description: description,
 		MetricDSN:   metricDSN,
+		PrivateSite: privateSite,
 	}
 	if err := validateRequest(&req); err != nil {
 		return false, fmt.Errorf("headless install validation failed: %w", err)
 	}
-	cfg, err := metricConfig(req)
+	cfg, err := metricConfig(req.MetricDSN)
 	if err != nil {
 		return false, fmt.Errorf("headless install metric DSN invalid: %w", err)
 	}
@@ -84,7 +100,7 @@ func CompleteFromEnv(ctx context.Context, db *gorm.DB) (bool, error) {
 		return false, fmt.Errorf("headless install monitoring database connection failed: %w", err)
 	}
 	ctrl := NewController(db)
-	if err := ctrl.createAccountAndSettings(&req, cfg); err != nil {
+	if err := ctrl.createAccountAndSettings(ctx, &req, cfg, nil); err != nil {
 		return false, fmt.Errorf("headless install failed to persist settings: %w", err)
 	}
 	logger.Infof("install", "Headless first-run installation completed for admin user %q", req.Username)
@@ -92,8 +108,11 @@ func CompleteFromEnv(ctx context.Context, db *gorm.DB) (bool, error) {
 }
 
 type Status struct {
-	State    string `json:"state"`
-	Required bool   `json:"required"`
+	State              string `json:"state"`
+	Required           bool   `json:"required"`
+	DefaultSitename    string `json:"default_sitename"`
+	DefaultDescription string `json:"default_description"`
+	DefaultMetricDSN   string `json:"default_metric_dsn"`
 }
 
 type completeRequest struct {
@@ -102,6 +121,8 @@ type completeRequest struct {
 	Sitename    string `json:"sitename"`
 	Description string `json:"description"`
 	MetricDSN   string `json:"metric_dsn"`
+	PrivateSite bool   `json:"private_site"`
+	Language    string `json:"language"`
 }
 
 type Controller struct {
@@ -125,6 +146,7 @@ func (c *Controller) Done() <-chan struct{} { return c.done }
 func (c *Controller) Register(r *gin.Engine) {
 	g := r.Group(APIPath, c.requireActive)
 	g.GET("/status", c.status)
+	g.POST("/test-db", c.testDB)
 	g.POST("/complete", c.complete)
 	uploadHandler := upload.NewHandler(upload.DefaultStore, map[upload.Purpose]upload.Finalizer{
 		upload.PurposeBackup: c.finalizeBackupUpload,
@@ -150,7 +172,34 @@ func (c *Controller) status(ctx *gin.Context) {
 	c.mu.Lock()
 	state := c.state
 	c.mu.Unlock()
-	api.RespondSuccess(ctx, Status{State: state, Required: state != "completed"})
+	api.RespondSuccess(ctx, Status{
+		State:              state,
+		Required:           state != "completed",
+		DefaultSitename:    appconfig.DefaultSitename,
+		DefaultDescription: appconfig.DefaultDescription,
+		DefaultMetricDSN:   defaultMetricDSN,
+	})
+}
+
+func (c *Controller) testDB(ctx *gin.Context) {
+	var request struct {
+		MetricDSN string `json:"metric_dsn"`
+	}
+	if err := decodeJSON(ctx, &request); err != nil {
+		api.RespondError(ctx, http.StatusBadRequest, err.Error())
+		return
+	}
+	cfg, err := metricConfig(request.MetricDSN)
+	if err == nil {
+		pingCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
+		defer cancel()
+		err = metricstore.TestConnection(pingCtx, cfg)
+	}
+	if err != nil {
+		api.RespondError(ctx, http.StatusBadRequest, fmt.Sprintf("monitoring database connection failed: %v", err))
+		return
+	}
+	api.RespondSuccess(ctx, gin.H{"ok": true, "driver": cfg.Driver, "message": "Connection succeeded"})
 }
 
 func (c *Controller) finalizeBackupUpload(session upload.Session) (upload.Result, error) {
@@ -190,7 +239,7 @@ func (c *Controller) complete(ctx *gin.Context) {
 	c.state = "completing"
 	c.mu.Unlock()
 
-	cfg, err := metricConfig(request)
+	cfg, err := metricConfig(request.MetricDSN)
 	if err == nil {
 		pingCtx, cancel := context.WithTimeout(ctx.Request.Context(), 15*time.Second)
 		err = metricstore.TestConnection(pingCtx, cfg)
@@ -202,7 +251,13 @@ func (c *Controller) complete(ctx *gin.Context) {
 		return
 	}
 
-	if err := c.createAccountAndSettings(&request, cfg); err != nil {
+	var session string
+	err = c.createAccountAndSettings(ctx.Request.Context(), &request, cfg, func(tx *gorm.DB, uuid string) error {
+		var err error
+		session, err = accounts.CreateSessionWithDB(tx, uuid, publicapi.SessionCookieMaxAge, ctx.Request.UserAgent(), ctx.ClientIP(), "password")
+		return err
+	})
+	if err != nil {
 		c.fail()
 		api.RespondError(ctx, http.StatusInternalServerError, "failed to save installation settings")
 		return
@@ -211,6 +266,17 @@ func (c *Controller) complete(ctx *gin.Context) {
 	c.mu.Lock()
 	c.state = "completed"
 	c.mu.Unlock()
+	publicapi.SetSessionCookie(ctx, session, publicapi.SessionCookieMaxAge)
+	if request.Language != "" {
+		http.SetCookie(ctx.Writer, &http.Cookie{
+			Name:     public.LanguageCookieName,
+			Value:    request.Language,
+			Path:     "/",
+			MaxAge:   publicapi.SessionCookieMaxAge,
+			Secure:   utils.GetScheme(ctx) == "https",
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		c.Deactivate()
@@ -225,29 +291,35 @@ func (c *Controller) fail() {
 	c.mu.Unlock()
 }
 
-func (c *Controller) createAccountAndSettings(request *completeRequest, cfg *metricstore.MetricStoreConfig) error {
-	var count int64
-	if err := c.db.Model(&models.User{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count != 0 {
-		return fmt.Errorf("installation is already completed")
-	}
-	user, err := accounts.CreateAccountWithDB(c.db, request.Username, request.Password)
-	if err != nil {
-		return err
-	}
-	settings := map[string]any{
-		appconfig.SitenameKey:         request.Sitename,
-		appconfig.DescriptionKey:      request.Description,
-		metricstore.MetricDBDriverKey: cfg.Driver,
-		metricstore.MetricDBDSNKey:    cfg.DSN,
-	}
-	if err := appconfig.SetMany(settings); err != nil {
-		_ = accounts.DeleteAccountByUsernameWithDB(c.db, user.Username)
-		return err
-	}
-	return nil
+func (c *Controller) createAccountAndSettings(ctx context.Context, request *completeRequest, cfg *metricstore.MetricStoreConfig, createSession func(*gorm.DB, string) error) error {
+	return c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&models.User{}).Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 0 {
+			return fmt.Errorf("installation is already completed")
+		}
+		user, err := accounts.CreateAccountWithDB(tx, request.Username, request.Password)
+		if err != nil {
+			return err
+		}
+		settings := map[string]any{
+			appconfig.SitenameKey:         request.Sitename,
+			appconfig.DescriptionKey:      request.Description,
+			appconfig.EulaAcceptedKey:     true,
+			appconfig.PrivateSiteKey:      request.PrivateSite,
+			metricstore.MetricDBDriverKey: cfg.Driver,
+			metricstore.MetricDBDSNKey:    cfg.DSN,
+		}
+		if err := appconfig.SetManyWithDB(tx, settings); err != nil {
+			return err
+		}
+		if createSession != nil {
+			return createSession(tx, user.UUID)
+		}
+		return nil
+	})
 }
 
 func validateRequest(request *completeRequest) error {
@@ -255,6 +327,7 @@ func validateRequest(request *completeRequest) error {
 	request.Sitename = strings.TrimSpace(request.Sitename)
 	request.Description = strings.TrimSpace(request.Description)
 	request.MetricDSN = strings.TrimSpace(request.MetricDSN)
+	request.Language = strings.TrimSpace(request.Language)
 	if request.Username == "" || utf8.RuneCountInString(request.Username) > 64 {
 		return fmt.Errorf("username must be between 1 and 64 characters")
 	}
@@ -271,9 +344,6 @@ func validateRequest(request *completeRequest) error {
 	if utf8.RuneCountInString(request.Description) > 1000 {
 		return fmt.Errorf("site description must be at most 1000 characters")
 	}
-	if request.MetricDSN == "" {
-		return fmt.Errorf("monitoring database DSN is required")
-	}
 	return nil
 }
 
@@ -287,8 +357,11 @@ func hasStrongPassword(password string) bool {
 	return upper && lower && digit
 }
 
-func metricConfig(request completeRequest) (*metricstore.MetricStoreConfig, error) {
-	dsn := request.MetricDSN
+func metricConfig(dsn string) (*metricstore.MetricStoreConfig, error) {
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" {
+		return nil, fmt.Errorf("monitoring database DSN is required")
+	}
 	driver, ok := metricstore.InferDriverFromDSN(dsn)
 	if !ok {
 		return nil, fmt.Errorf("cannot infer monitoring database type from DSN")

@@ -13,9 +13,6 @@ import (
 
 // Bootstrap initializes the data directory, primary database, and settings.
 func (a *App) Bootstrap() error {
-	if err := os.MkdirAll("./data/theme", os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create theme directory: %w", err)
-	}
 	if err := os.MkdirAll("./data/plugin", os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create plugin directory: %w", err)
 	}

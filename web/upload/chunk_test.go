@@ -58,7 +58,7 @@ func TestStoreInitValidatesPurposeAndSize(t *testing.T) {
 	}{
 		{name: "valid backup", purpose: PurposeBackup, size: 1024},
 		{name: "valid plugin", purpose: PurposePlugin, size: 1},
-		{name: "valid theme", purpose: PurposeTheme, size: ChunkSize},
+		{name: "removed theme purpose", purpose: Purpose("theme"), size: ChunkSize, wantErr: true},
 		{name: "unknown purpose", purpose: Purpose("../../etc"), size: 1024, wantErr: true},
 		{name: "empty purpose", purpose: Purpose(""), size: 1024, wantErr: true},
 		{name: "zero size", purpose: PurposeBackup, size: 0, wantErr: true},

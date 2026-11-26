@@ -1,13 +1,13 @@
 package public
 
 import (
-	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/komari-monitor/komari/internal/config"
@@ -77,198 +77,115 @@ func TestReplaceHTMLLanguage(t *testing.T) {
 	}
 }
 
-// sharedDistDir extracts the embedded dist archive once per test binary.
-// Extraction dominates these tests' runtime, so both dist-related tests reuse
-// a single copy instead of unpacking the archive twice.
-var (
-	sharedDistOnce sync.Once
-	sharedDistPath string
-	sharedDistErr  error
-)
+func TestPrepareDefaultDist(t *testing.T) {
+	previous := defaultDistCacheDir
+	defaultDistCacheDir = filepath.Join(t.TempDir(), "dist")
+	t.Cleanup(func() { defaultDistCacheDir = previous })
 
-func extractSharedDist(t *testing.T) string {
-	t.Helper()
-	sharedDistOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "komari-public-dist-*")
-		if err != nil {
-			sharedDistErr = err
-			return
-		}
-		if err := extractDistArchive(embeddedDistArchive, dir); err != nil {
-			sharedDistErr = err
-			_ = os.RemoveAll(dir)
-			return
-		}
-		sharedDistPath = dir
-	})
-	if sharedDistErr != nil {
-		t.Fatalf("extract embedded dist: %v", sharedDistErr)
+	if err := PrepareDefaultDist(); err != nil {
+		t.Fatalf("extract embedded frontend: %v", err)
 	}
-	return sharedDistPath
-}
-
-func TestEmbeddedDistDoesNotEmbedRawFiles(t *testing.T) {
-	if _, err := PublicFS.ReadFile("defaultTheme/dist/index.html"); err == nil {
-		t.Fatal("PublicFS still embeds the raw frontend files")
-	}
-	content, err := os.ReadFile(filepath.Join(extractSharedDist(t), IndexFile))
+	content, _, err := readDistFile(IndexFile)
 	if err != nil || len(content) == 0 {
-		t.Fatalf("embedded dist does not contain a non-empty %q", IndexFile)
+		t.Fatalf("embedded dist does not contain a non-empty %q: %v", IndexFile, err)
 	}
 }
 
-func TestStaticRestrictedDoesNotServeCustomAssetOverride(t *testing.T) {
+func TestStaticServesFrontend(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	oldDefaultDistCacheDir := defaultDistCacheDir
-	defaultDistCacheDir = extractSharedDist(t)
-	t.Cleanup(func() {
-		defaultDistCacheDir = oldDefaultDistCacheDir
-	})
+	previous := defaultDistCacheDir
+	defaultDistCacheDir = t.TempDir()
+	t.Cleanup(func() { defaultDistCacheDir = previous })
 	t.Chdir(t.TempDir())
-	assetPath := filepath.Join("data", "theme", "custom", "dist", "assets")
-	if err := os.MkdirAll(assetPath, 0o755); err != nil {
-		t.Fatalf("create custom theme asset directory: %v", err)
-	}
-	const assetName = "about-D4JKo971.css"
-	if err := os.WriteFile(filepath.Join(assetPath, assetName), []byte("custom override"), 0o644); err != nil {
-		t.Fatalf("write custom theme asset: %v", err)
+	for name, content := range map[string]string{
+		filepath.Join(defaultDistCacheDir, IndexFile): `<html lang="en"><head><title>PulseDeck</title><meta name="description" content="` +
+			config.DefaultDescription + `"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head><body>App</body></html>`,
+		filepath.Join(defaultDistCacheDir, faviconFile):        "embedded favicon",
+		filepath.Join(defaultDistCacheDir, "assets", "app.js"): "embedded asset",
+		filepath.Join("data", faviconFile):                     "custom favicon",
+	} {
+		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("open config db: %v", err)
+		t.Fatalf("open config database: %v", err)
 	}
-	config.SetDb(db)
-	if err := config.Set(config.ThemeKey, "custom"); err != nil {
-		t.Fatalf("set custom theme: %v", err)
-	}
-
-	router := gin.New()
-	StaticRestricted(router.Group("/"), func(handlers ...gin.HandlerFunc) {
-		router.NoRoute(handlers...)
-	})
-	for _, requestPath := range []string{"/assets/" + assetName} {
-		request := httptest.NewRequest("GET", requestPath, nil)
-		recorder := httptest.NewRecorder()
-		router.ServeHTTP(recorder, request)
-		if recorder.Code != 200 {
-			t.Fatalf("restricted asset %s status = %d, want 200", requestPath, recorder.Code)
-		}
-		body, err := io.ReadAll(recorder.Result().Body)
-		if err != nil {
-			t.Fatalf("read restricted asset %s: %v", requestPath, err)
-		}
-		if string(body) == "custom override" {
-			t.Fatalf("restricted listener served a custom theme asset override for %s", requestPath)
-		}
-	}
-
-	indexRequest := httptest.NewRequest("GET", "/database-recovery", nil)
-	indexRecorder := httptest.NewRecorder()
-	router.ServeHTTP(indexRecorder, indexRequest)
-	indexBody, err := io.ReadAll(indexRecorder.Result().Body)
+	sqlDB, err := db.DB()
 	if err != nil {
-		t.Fatalf("read restricted index: %v", err)
+		t.Fatal(err)
 	}
-	if strings.Contains(string(indexBody), `vite-plugin-pwa:register-sw`) {
-		t.Fatal("restricted index still registers a service worker")
-	}
-
-	probeReq := httptest.NewRequest("GET", "/probe-theme/", nil)
-	probeRec := httptest.NewRecorder()
-	router.ServeHTTP(probeRec, probeReq)
-	if probeRec.Code != 404 {
-		t.Fatalf("restricted /probe-theme/ status = %d, want 404", probeRec.Code)
-	}
-}
-
-func TestProbeThemeIsolationKeepsHubShellAndServesMarketTheme(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	oldDefaultDistCacheDir := defaultDistCacheDir
-	defaultDistCacheDir = extractSharedDist(t)
-	t.Cleanup(func() {
-		defaultDistCacheDir = oldDefaultDistCacheDir
-	})
-	t.Chdir(t.TempDir())
-
-	themeDist := filepath.Join("data", "theme", "purcarte", "dist")
-	if err := os.MkdirAll(filepath.Join(themeDist, "assets"), 0o755); err != nil {
-		t.Fatalf("create theme dir: %v", err)
-	}
-	themeHTML := `<!doctype html><html lang="en"><head><title>Komari Monitor</title><script type="module" src="/assets/purcarte-app.js"></script><link rel="stylesheet" href="/assets/purcarte.css"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head><body><div id="purcarte-root"></div></body></html>`
-	if err := os.WriteFile(filepath.Join(themeDist, "index.html"), []byte(themeHTML), 0o644); err != nil {
-		t.Fatalf("write theme index.html: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(themeDist, "assets", "purcarte-app.js"), []byte(`console.log("purcarte");`), 0o644); err != nil {
-		t.Fatalf("write theme asset: %v", err)
-	}
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open config db: %v", err)
-	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	config.SetDb(db)
-	if err := config.Set(config.ThemeKey, "purcarte"); err != nil {
-		t.Fatalf("set theme: %v", err)
-	}
-	if err := config.Set(config.SitenameKey, "My Unified Hub"); err != nil {
-		t.Fatalf("set sitename: %v", err)
+	if err := config.SetMany(map[string]any{
+		config.ThemeKey:                 "legacy-theme",
+		config.SitenameKey:              "My PulseDeck",
+		config.DescriptionKey:           "My description",
+		config.CustomHeadKey:            "<meta name='custom-head'>",
+		config.CustomBodyKey:            "<div id='custom-body'></div>",
+		"tempory_share_token":           "test-key",
+		"tempory_share_token_expire_at": time.Now().Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatalf("seed config: %v", err)
 	}
 
-	router := gin.New()
-	Static(router.Group("/"), func(handlers ...gin.HandlerFunc) {
-		router.NoRoute(handlers...)
-	})
-
-	// 1. Hub shell routes must STILL serve embedded defaultTheme, never hijacked by purcarte
-	for _, hubRoute := range []string{"/", "/servers", "/uptime", "/subscriptions"} {
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest("GET", hubRoute, nil))
-		if rec.Code != 200 {
-			t.Fatalf("hub route %s status = %d, want 200", hubRoute, rec.Code)
+	for _, restricted := range []bool{false, true} {
+		name := "public"
+		register := Static
+		if restricted {
+			name = "restricted"
+			register = StaticRestricted
 		}
-		if strings.Contains(rec.Body.String(), "purcarte-root") {
-			t.Fatalf("hub route %s was hijacked by third-party theme", hubRoute)
-		}
-	}
+		t.Run(name, func(t *testing.T) {
+			router := gin.New()
+			register(router.Group("/"), router.NoRoute)
+			fetch := func(path string) *httptest.ResponseRecorder {
+				t.Helper()
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				req.AddCookie(&http.Cookie{Name: LanguageCookieName, Value: "zh-CN"})
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("GET %s = %d, want 200", path, rec.Code)
+				}
+				return rec
+			}
 
-	// 2. /probe-theme/ serves the installed third-party theme with rewritten assets, no SW, and bridge script
-	probeRec := httptest.NewRecorder()
-	router.ServeHTTP(probeRec, httptest.NewRequest("GET", "/probe-theme/", nil))
-	if probeRec.Code != 200 {
-		t.Fatalf("/probe-theme/ status = %d, want 200", probeRec.Code)
-	}
-	body := probeRec.Body.String()
-	if !strings.Contains(body, `id="purcarte-root"`) {
-		t.Fatalf("/probe-theme/ did not serve purcarte HTML: %s", body)
-	}
-	if !strings.Contains(body, `src="/probe-theme-assets/purcarte/assets/purcarte-app.js"`) {
-		t.Fatalf("/probe-theme/ did not rewrite script src: %s", body)
-	}
-	if !strings.Contains(body, `href="/probe-theme-assets/purcarte/assets/purcarte.css"`) {
-		t.Fatalf("/probe-theme/ did not rewrite stylesheet href: %s", body)
-	}
-	if strings.Contains(body, `vite-plugin-pwa:register-sw`) {
-		t.Fatalf("/probe-theme/ did not strip PWA service worker registration")
-	}
-	if !strings.Contains(body, `data-komari-hub-bridge="1"`) {
-		t.Fatalf("/probe-theme/ missing hub bridge script")
-	}
-	if !strings.Contains(body, `<title>My Unified Hub</title>`) {
-		t.Fatalf("/probe-theme/ did not apply sitename replacement")
-	}
+			if asset := fetch("/assets/app.js").Body.String(); asset != "embedded asset" {
+				t.Fatalf("unexpected frontend asset: %q", asset)
+			}
+			wantFavicon := "custom favicon"
+			if restricted {
+				wantFavicon = "embedded favicon"
+			}
+			if favicon := fetch("/favicon.ico").Body.String(); favicon != wantFavicon {
+				t.Fatalf("favicon = %q, want %q", favicon, wantFavicon)
+			}
 
-	// 3. Isolated theme asset endpoint serves the third-party JS file
-	assetRec := httptest.NewRecorder()
-	router.ServeHTTP(assetRec, httptest.NewRequest("GET", "/probe-theme-assets/purcarte/assets/purcarte-app.js", nil))
-	if assetRec.Code != 200 || !strings.Contains(assetRec.Body.String(), `console.log("purcarte")`) {
-		t.Fatalf("probe-theme-assets status=%d body=%q", assetRec.Code, assetRec.Body.String())
-	}
+			fallback := fetch("/servers?temp_key=test-key")
+			body := fallback.Body.String()
+			if !strings.Contains(body, `<html lang="zh-CN">`) {
+				t.Fatal("SPA fallback ignored the language cookie")
+			}
+			for _, fragment := range []string{"My PulseDeck", "My description", "custom-head", "custom-body", "vite-plugin-pwa:register-sw"} {
+				if strings.Contains(body, fragment) == restricted {
+					t.Errorf("unexpected presence of %q in frontend HTML", fragment)
+				}
+			}
+			cookies := fallback.Result().Cookies()
+			if len(cookies) != 1 || cookies[0].Name != "temp_key" || cookies[0].Value != "test-key" || cookies[0].MaxAge <= 0 {
+				t.Fatal("SPA fallback did not set a valid temp_key cookie")
+			}
 
-	// 4. Reject path traversal on ?theme=
-	badRec := httptest.NewRecorder()
-	router.ServeHTTP(badRec, httptest.NewRequest("GET", "/probe-theme/?theme=../secret", nil))
-	if badRec.Code != 404 {
-		t.Fatalf("traversal ?theme=../secret status = %d, want 404", badRec.Code)
+			admin := fetch("/admin/overview").Body.String()
+			if strings.Contains(admin, "custom-head") || strings.Contains(admin, "custom-body") {
+				t.Fatal("admin shell applied public HTML customizations")
+			}
+		})
 	}
 }

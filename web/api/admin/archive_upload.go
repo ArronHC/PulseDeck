@@ -19,7 +19,6 @@ func NewArchiveUploadHandler() *upload.Handler {
 	h := upload.NewHandler(upload.DefaultStore, map[upload.Purpose]upload.Finalizer{
 		upload.PurposeBackup: finalizeBackupUpload,
 		upload.PurposePlugin: finalizePluginUpload,
-		upload.PurposeTheme:  finalizeThemeUpload,
 	})
 	h.OnMerged = auditArchiveUpload
 	return h
@@ -38,12 +37,6 @@ func auditArchiveUpload(c *gin.Context, session upload.Session, result upload.Re
 			auditlog.Log(ip, actor, fmt.Sprintf("Install plugin from upload: short=%s, version=%s, file=%s, size=%s", info.Short, info.Version, filename, size), "warn")
 		} else {
 			auditlog.Log(ip, actor, fmt.Sprintf("Install plugin from upload: file=%s, size=%s", filename, size), "warn")
-		}
-	case upload.PurposeTheme:
-		if info, ok := result.Data.(models.Theme); ok {
-			auditlog.Log(ip, actor, fmt.Sprintf("Install theme from upload: short=%s, version=%s, file=%s, size=%s", info.Short, info.Version, filename, size), "info")
-		} else {
-			auditlog.Log(ip, actor, fmt.Sprintf("Install theme from upload: file=%s, size=%s", filename, size), "info")
 		}
 	}
 }
@@ -87,12 +80,4 @@ func finalizePluginUpload(session upload.Session) (upload.Result, error) {
 		return upload.Result{}, err
 	}
 	return upload.Result{Message: "插件上传成功", Data: info}, nil
-}
-
-func finalizeThemeUpload(session upload.Session) (upload.Result, error) {
-	info, err := extractAndValidateTheme(session.ArchivePath)
-	if err != nil {
-		return upload.Result{}, err
-	}
-	return upload.Result{Message: "主题上传成功", Data: info}, nil
 }

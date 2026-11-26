@@ -2,7 +2,6 @@ import ThemeSwitch from "./ThemeSwitch";
 import ColorSwitch from "./ColorSwitch";
 import LanguageSwitch from "./Language";
 import { AccountProvider, useAccount } from "@/contexts/AccountContext";
-import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import { LogIn } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
@@ -11,7 +10,7 @@ import { loginPath } from "@/utils/loginRedirect";
 import { motion } from "motion/react";
 import { CONTROL_MOTION, SURFACE_MOTION } from "@/lib/motion";
 import { useViewTransitionNavigate } from "@/hooks/useViewTransitionNavigate";
-import { MotionButton, MotionIconButton } from "./ui/motion-radix";
+import { MotionButton } from "./ui/motion-radix";
 import { Skeletonize, skeletonText } from "./ui/skeleton";
 
 /** 首页相关 chunk 预取：悬停品牌名时先下载，点下去时新页面能在共享元素过渡的窗口内挂好 */
@@ -87,7 +86,7 @@ const NavBar = () => {
             className="text-base font-bold whitespace-nowrap"
             style={{ color: "var(--accent-4)" }}
           >
-            Komari Monitor
+            PulseDeck
           </span>
         </div>
       </div>
@@ -97,25 +96,13 @@ const NavBar = () => {
         每个按钮自己就是 motion 元素（不额外包 div），保持原有 DOM 层级与选择器。
       */}
       <div className="km-navbar-controls flex items-center gap-2 flex-shrink-0">
-        <MotionIconButton
-          variant="soft"
-          onClick={() => {
-            window.open("https://github.com/komari-monitor", "_blank");
-          }}
-          whileHover={CONTROL_MOTION.hover}
-          whileTap={CONTROL_MOTION.tap}
-          transition={CONTROL_MOTION.transition}
-        >
-          <GitHubLogoIcon />
-        </MotionIconButton>
-
         <ThemeSwitch />
         <ColorSwitch />
         <LanguageSwitch />
         <MotionButton
           onClick={() => {
             window.location.href =
-              account?.logged_in ? "/admin/dashboard" : loginRedirect;
+              account?.logged_in ? "/admin/overview" : loginRedirect;
           }}
           whileHover={CONTROL_MOTION.hover}
           whileTap={CONTROL_MOTION.tap}
