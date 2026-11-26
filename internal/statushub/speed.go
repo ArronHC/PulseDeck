@@ -44,7 +44,7 @@ func (s *Service) SaveSpeedResults(ctx context.Context, items []SpeedReportItem)
 	seen := make(map[uint]bool, len(items))
 	for _, item := range items {
 		switch item.TestMethod {
-		case "", "browser_http", "browser_tcp", "tcp", "proxy_http", "proxy_download", "tcp_fallback":
+		case "", "browser_http", "browser_tcp", "browser_probe", "tcp", "proxy_http", "proxy_download", "tcp_fallback":
 		default:
 			return nil, InputError("invalid test_method")
 		}
@@ -53,9 +53,9 @@ func (s *Service) SaveSpeedResults(ctx context.Context, items []SpeedReportItem)
 			if item.LatencyMS < 0 || item.DownloadMbps < 0 || math.IsNaN(item.DownloadMbps) || math.IsInf(item.DownloadMbps, 0) {
 				return nil, InputError("invalid speed test measurements")
 			}
-		case "error", "timeout", "untested":
+		case "error", "timeout", "untested", "unknown":
 		default:
-			return nil, InputError("test_status must be ok, error, timeout, or untested")
+			return nil, InputError("test_status must be ok, error, timeout, untested, or unknown")
 		}
 		if item.NodeID == 0 || seen[item.NodeID] {
 			return nil, InputError("speed results must specify unique node IDs")
@@ -90,7 +90,7 @@ func (s *Service) SaveSpeedResults(ctx context.Context, items []SpeedReportItem)
 			switch result.status {
 			case "error", "timeout":
 				result.latency, result.download = -1, 0
-			case "untested":
+			case "untested", "unknown":
 				result.latency, result.download = 0, 0
 			}
 			if err := saveSpeedResult(tx, &node, result, now); err != nil {

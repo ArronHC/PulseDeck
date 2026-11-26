@@ -73,7 +73,7 @@ docker compose -f docker-compose.demo.yml up -d
 - **Service Uptime (`/uptime` & `/admin/uptime`)** — Built-in `HTTP/HTTPS`, `Keyword`, `TCP`, and `Ping` probes with 60-tick heartbeat strips, 30-day retention, incident timeline, and **Uptime Kuma** sync.
 - **Subscriptions, World Map, Streaming Speedtest & IPPure Purity (`/subscriptions` & `/admin/subscriptions`)**:
   - Parses `Base64` / URI lines (`VMess`, `VLESS`, `Trojan`, `Shadowsocks`, `Hysteria2`, `TUIC`, `SOCKS5`, `HTTP`), `Clash / Mihomo YAML`, and `Sing-box JSON` with `Subscription-Userinfo` tracking.
-  - **Honest Test Modes & Streaming Output**: Defaults to **user-network (browser) latency probing** and also supports **server-side SSE streaming** (`Proxy HTTP`, `Proxy Download`, `TCP Connect`), labeling each node's exact `test_method` (`代理延迟`, `下载测速`, `TCP 连通`, `TCP 回退`, `本机 HTTP/TCP`).
+  - **Honest Test Modes & Streaming Output**: Recommends **server-side SSE streaming real proxy testing** (`Proxy HTTP`, `Proxy Download`, `TCP Connect`) and also offers limited browser-side HTTP/TLS probing, labeling each node's exact `test_method` (`代理延迟`, `下载测速`, `TCP 连通`, `TCP 回退`, `本机 HTTP`, `浏览器探测估算`).
   - **Automated Schedules & Alerts**: Configurable per-subscription auto speedtests, periodic IPPure purity checks, subscription expiry alerts, and IP quality degradation alerts (fraud score jump / residential-to-datacenter or native-to-broadcast downgrade).
   - Multi-column sorting (latency, download speed, fraud score, region, name) and offline world map visualization.
 - **Zero Bloat**: Legacy WebSSH/file-manager workbench, Theme Market, and runtime Plugin System are removed for security and cohesion.

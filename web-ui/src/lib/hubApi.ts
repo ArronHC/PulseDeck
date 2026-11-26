@@ -631,13 +631,21 @@ export function formatTestMethod(method?: string): TestMethodDisplay | null {
         badgeClass:
           "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800/70 dark:bg-indigo-950/60 dark:text-indigo-300",
       };
+    case "browser_probe":
+      return {
+        label: i18n.t("pulse.speedMethod.browserProbeLabel"),
+        tone: "amber",
+        title: i18n.t("pulse.speedMethod.browserProbeTitle"),
+        badgeClass:
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300",
+      };
     case "browser_tcp":
       return {
         label: i18n.t("pulse.speedMethod.browserTcpLabel"),
-        tone: "sky",
+        tone: "amber",
         title: i18n.t("pulse.speedMethod.browserTcpTitle"),
         badgeClass:
-          "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/70 dark:bg-sky-950/60 dark:text-sky-300",
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300",
       };
     case "tcp":
       return {

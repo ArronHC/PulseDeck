@@ -62,22 +62,23 @@ import {
 import { toast } from "sonner";
 
 type SpeedTestModeOption =
-  | "client"
   | "server_http"
   | "server_download"
-  | "server_tcp";
+  | "server_tcp"
+  | "client";
 
 const SPEED_TEST_MODES: Array<{ value: SpeedTestModeOption; labelKey: string }> = [
-  { value: "client", labelKey: "pulse.adminSubs.modeClient" },
   { value: "server_http", labelKey: "pulse.adminSubs.modeServerHttp" },
   { value: "server_download", labelKey: "pulse.adminSubs.modeServerDownload" },
   { value: "server_tcp", labelKey: "pulse.adminSubs.modeServerTcp" },
+  { value: "client", labelKey: "pulse.adminSubs.modeClient" },
 ];
 
 interface SpeedTestProgress {
   completed: number;
   total: number;
   ok: number;
+  unknown: number;
   failed: number;
   modeLabel: string;
 }
@@ -92,8 +93,8 @@ export default function SubscriptionsManagePage() {
   const [busyGlobal, setBusyGlobal] = useState<string | null>(null);
   const [busyNodeId, setBusyNodeId] = useState<number | null>(null);
 
-  // Speedtest state
-  const [speedMode, setSpeedMode] = useState<SpeedTestModeOption>("client");
+  // Speedtest state (default to real server proxy latency test)
+  const [speedMode, setSpeedMode] = useState<SpeedTestModeOption>("server_http");
   const [testingNodeIds, setTestingNodeIds] = useState<Set<number>>(() => new Set());
   const [speedProgress, setSpeedProgress] = useState<SpeedTestProgress | null>(null);
   const speedAbortRef = useRef<AbortController | null>(null);
@@ -378,12 +379,14 @@ export default function SubscriptionsManagePage() {
       completed: 0,
       total: targets.length,
       ok: 0,
+      unknown: 0,
       failed: 0,
       modeLabel,
     });
 
     let completed = 0;
     let okCount = 0;
+    let unknownCount = 0;
     let failedCount = 0;
     let totalCount = targets.length;
     let reportFailed = false;
@@ -447,11 +450,13 @@ export default function SubscriptionsManagePage() {
             });
             completed += 1;
             if (res.test_status === "ok") okCount += 1;
+            else if (res.test_status === "unknown") unknownCount += 1;
             else failedCount += 1;
             setSpeedProgress({
               completed,
               total: totalCount,
               ok: okCount,
+              unknown: unknownCount,
               failed: failedCount,
               modeLabel,
             });
@@ -505,11 +510,13 @@ export default function SubscriptionsManagePage() {
               completed = ev.completed;
               if (ev.total > 0) totalCount = ev.total;
               if (tested.test_status === "ok") okCount += 1;
+              else if (tested.test_status === "unknown") unknownCount += 1;
               else failedCount += 1;
               setSpeedProgress({
                 completed,
                 total: totalCount,
                 ok: okCount,
+                unknown: unknownCount,
                 failed: failedCount,
                 modeLabel,
               });
@@ -527,18 +534,44 @@ export default function SubscriptionsManagePage() {
       }
 
       if (controller.signal.aborted) {
-        toast.info(t("pulse.adminSubs.speedStopped", { completed, total: totalCount, ok: okCount }));
+        toast.info(
+          unknownCount > 0
+            ? t("pulse.adminSubs.speedStoppedWithUnknown", {
+                completed,
+                total: totalCount,
+                ok: okCount,
+                unknown: unknownCount,
+              })
+            : t("pulse.adminSubs.speedStopped", { completed, total: totalCount, ok: okCount }),
+        );
       } else if (reportFailed) {
         toast.warning(t("pulse.adminSubs.speedPartialSaveWarn"));
       } else {
-        toast.success(t("pulse.adminSubs.speedDone", { ok: okCount, total: totalCount }));
+        toast.success(
+          unknownCount > 0
+            ? t("pulse.adminSubs.speedDoneWithUnknown", {
+                ok: okCount,
+                unknown: unknownCount,
+                total: totalCount,
+              })
+            : t("pulse.adminSubs.speedDone", { ok: okCount, total: totalCount }),
+        );
       }
     } catch (err) {
       if (
         controller.signal.aborted ||
         (err instanceof DOMException && err.name === "AbortError")
       ) {
-        toast.info(t("pulse.adminSubs.speedStopped", { completed, total: totalCount, ok: okCount }));
+        toast.info(
+          unknownCount > 0
+            ? t("pulse.adminSubs.speedStoppedWithUnknown", {
+                completed,
+                total: totalCount,
+                ok: okCount,
+                unknown: unknownCount,
+              })
+            : t("pulse.adminSubs.speedStopped", { completed, total: totalCount, ok: okCount }),
+        );
       } else {
         toast.error(err instanceof Error ? err.message : t("pulse.adminSubs.speedFailed"));
       }
@@ -712,7 +745,7 @@ export default function SubscriptionsManagePage() {
       {/* Server Proxy Core Capability Banner / Pill */}
       {capabilities &&
         (capabilities.has_proxy_core ? (
-          <div className="flex items-center">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
               <span>
@@ -731,6 +764,13 @@ export default function SubscriptionsManagePage() {
             </span>
           </div>
         ))}
+
+      {speedMode === "client" && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3.5 py-2 text-xs text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>{t("pulse.adminSubs.browserModeNotice")}</span>
+        </div>
+      )}
 
       {/* Subscription Sources */}
       {subscriptions.length > 0 && (
@@ -1124,6 +1164,11 @@ export default function SubscriptionsManagePage() {
                     <span className="text-emerald-600 dark:text-emerald-400">
                       {t("pulse.adminSubs.progressOk", { count: speedProgress.ok })}
                     </span>
+                    {speedProgress.unknown > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        {t("pulse.adminSubs.progressUnknown", { count: speedProgress.unknown })}
+                      </span>
+                    )}
                     <span className="text-rose-600 dark:text-rose-400">
                       {t("pulse.adminSubs.progressFailed", { count: speedProgress.failed })}
                     </span>
@@ -1240,13 +1285,17 @@ export default function SubscriptionsManagePage() {
                         <div className="inline-flex flex-wrap items-center gap-1.5">
                           <span
                             title={node.test_message || undefined}
-                            className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${getLatencyBadgeClass(
-                              node.latency_ms,
-                            )}`}
+                            className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${
+                              node.test_status === "unknown"
+                                ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300"
+                                : getLatencyBadgeClass(node.latency_ms)
+                            }`}
                           >
-                            {node.latency_ms < 0 && node.test_status === "error"
-                              ? t("pulse.common.failed")
-                              : formatLatency(node.latency_ms)}
+                            {node.test_status === "unknown"
+                              ? t("pulse.common.unknownConnectivity")
+                              : node.latency_ms < 0 && node.test_status === "error"
+                                ? t("pulse.common.failed")
+                                : formatLatency(node.latency_ms)}
                           </span>
                           {methodBadge && (
                             <span

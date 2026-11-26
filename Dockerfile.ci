@@ -25,6 +25,30 @@ RUN apk add --no-cache ca-certificates curl tzdata \
         && gunzip -c /tmp/mihomo.gz > /usr/local/bin/mihomo \
         && chmod 755 /usr/local/bin/mihomo \
         && rm -f /tmp/mihomo.gz \
+        && mkdir -p /usr/local/share/licenses/mihomo \
+        && curl -fsSL "https://raw.githubusercontent.com/MetaCubeX/mihomo/${MIHOMO_VERSION}/LICENSE" -o /usr/local/share/licenses/mihomo/LICENSE \
+        && printf '%s\n' \
+          "Component: MetaCubeX/mihomo (${MIHOMO_VERSION}, linux-${MIHOMO_ARCH})" \
+          "Installed Binary: /usr/local/bin/mihomo (unmodified upstream release binary)" \
+          "License: GNU General Public License v3.0 (GPL-3.0)" \
+          "Full License Text: /usr/local/share/licenses/mihomo/LICENSE" \
+          "" \
+          "Separation Notice:" \
+          "  PulseDeck invokes mihomo solely as an optional standalone subprocess over local SOCKS5." \
+          "  PulseDeck itself remains licensed under the MIT License." \
+          "" \
+          "Corresponding Source Code (GPL-3.0 Section 6):" \
+          "  Upstream Repository: https://github.com/MetaCubeX/mihomo" \
+          "  Exact Tag Tree:      https://github.com/MetaCubeX/mihomo/tree/${MIHOMO_VERSION}" \
+          "  Source Archive:      https://github.com/MetaCubeX/mihomo/archive/refs/tags/${MIHOMO_VERSION}.tar.gz" \
+          "  Upstream Release:    https://github.com/MetaCubeX/mihomo/releases/tag/${MIHOMO_VERSION}" \
+          "" \
+          "Written Offer (GPL-3.0 Section 6(b) / 6(d)):" \
+          "  If the upstream source links above become unavailable, any recipient of this image may" \
+          "  obtain the exact corresponding source archive for mihomo ${MIHOMO_VERSION} free of charge" \
+          "  by opening an issue at https://github.com/ArronHC/PulseDeck/issues (valid for at least 3 years)." \
+          > /usr/local/share/licenses/mihomo/SOURCE.txt \
+        && chmod 644 /usr/local/share/licenses/mihomo/LICENSE /usr/local/share/licenses/mihomo/SOURCE.txt \
         && /usr/local/bin/mihomo -v ;; \
       *) echo "Invalid INSTALL_PROXY_CORE=${INSTALL_PROXY_CORE} (expected none, sing-box, or mihomo)" >&2; exit 1 ;; \
     esac \

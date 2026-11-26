@@ -18,7 +18,7 @@ PulseDeck is developed on top of [komari-monitor/komari](https://github.com/koma
 
 - **Project License**: MIT License ([LICENSE](./LICENSE)), matching upstream Komari's MIT license.
 - **Notice File**: Third-party Apache-2.0 / BSD notices are preserved in [NOTICE](./NOTICE).
-- **Backend Go Dependencies (`go.mod`)**: Standard permissive licenses (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `MPL-2.0`). Embedded `mihomo` binary in the `full` Docker image is distributed unmodified from MetaCubeX/mihomo (GPL-3.0) as an optional standalone executable invoked over local SOCKS5 (`exec.CommandContext`), and `:lite` omits it completely.
+- **Backend Go Dependencies (`go.mod`)**: Standard permissive licenses (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `MPL-2.0`). Embedded `mihomo` binary in the `full` Docker image is distributed unmodified from MetaCubeX/mihomo (GPL-3.0) as an optional standalone executable invoked over local SOCKS5 (`exec.CommandContext`), with its full GPL-3.0 license text (`/usr/local/share/licenses/mihomo/LICENSE`) and corresponding source acquisition notice/written offer (`/usr/local/share/licenses/mihomo/SOURCE.txt`) packaged inside the image. `:lite` omits `mihomo` completely.
 - **Frontend Dependencies (`web-ui/package.json`)**: Standard permissive licenses (`MIT`, `Apache-2.0`, `BSD`, `ISC`), including `React`, `Radix Themes`, `Tailwind CSS`, `Lucide`, `Recharts`, `d3-geo`, `world-atlas`, and `topojson-client`, all inspectable in `/admin/about` -> **Open Source Licenses**.
 
 ---

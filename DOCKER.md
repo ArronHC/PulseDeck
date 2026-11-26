@@ -4,7 +4,7 @@ PulseDeck 提供 **Full（默认）** 与 **Lite** 两种预构建双架构镜�
 
 | 镜像标签 | 说明 | 适用场景 |
 | :--- | :--- | :--- |
-| `ghcr.io/arronhc/pulsedeck:latest`（同 `:full`） | **完整版（推荐，开箱即用）**：内置 `mihomo` 代理核心 | 直接支持加密节点真实代理延迟、下载测速与节点 IPPure 纯净度检测 |
+| `ghcr.io/arronhc/pulsedeck:latest`（同 `:full`） | **完整版（推荐，开箱即用）**：内置 `mihomo` 代理核心（含 `/usr/local/share/licenses/mihomo/` 下 GPL-3.0 许可证全文与源码获取说明） | 直接支持加密节点真实代理延迟、下载测速与节点 IPPure 纯净度检测 |
 | `ghcr.io/arronhc/pulsedeck:lite` | **精简版**：不含内置代理核心 | 仅用探针/Uptime/浏览器本机测速，或自行挂载宿主机 `mihomo`/`sing-box` |
 | `ghcr.io/arronhc/pulsedeck:snapshot` / `:snapshot-lite` | 主干最新快照版（Full / Lite） | 抢先体验最新特性 |
 

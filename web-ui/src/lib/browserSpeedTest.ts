@@ -135,7 +135,7 @@ async function probeUrl(
       latency_ms: -1,
       download_mbps: 0,
       test_status: "error",
-      test_method: "browser_tcp",
+      test_method: "browser_probe",
       test_message: i18n.t("pulse.speedMethod.browserUnreachable"),
     };
   }
@@ -160,7 +160,7 @@ async function probeUrl(
       latency_ms: -1,
       download_mbps: 0,
       test_status: "timeout",
-      test_method: "browser_tcp",
+      test_method: "browser_probe",
       test_message: i18n.t("pulse.speedMethod.browserTimeout"),
     };
   }
@@ -170,18 +170,22 @@ async function probeUrl(
       latency_ms: -1,
       download_mbps: 0,
       test_status: "error",
-      test_method: "browser_tcp",
+      test_method: "browser_probe",
       test_message: i18n.t("pulse.speedMethod.browserUnreachable"),
     };
   }
 
+  // Standard web pages cannot open raw TCP sockets; a failed fetch's elapsed
+  // time does not prove port reachability (could be DNS, TCP RST, TLS, or non-HTTP protocol).
   return {
     node_id: nodeId,
-    latency_ms: Math.max(1, Math.round(Math.min(first.elapsed, second.elapsed))),
+    latency_ms: 0,
     download_mbps: 0,
-    test_status: "ok",
-    test_method: "browser_tcp",
-    test_message: i18n.t("pulse.speedMethod.browserTcpOk"),
+    test_status: "unknown",
+    test_method: "browser_probe",
+    test_message: i18n.t("pulse.speedMethod.browserProbeUnknown", {
+      elapsed: Math.max(1, Math.round(Math.min(first.elapsed, second.elapsed))),
+    }),
   };
 }
 
@@ -198,7 +202,7 @@ export async function probeNodeInBrowser(
       latency_ms: -1,
       download_mbps: 0,
       test_status: "error",
-      test_method: "browser_tcp",
+      test_method: "browser_probe",
       test_message: i18n.t("pulse.speedMethod.invalidHostPort"),
     };
   }

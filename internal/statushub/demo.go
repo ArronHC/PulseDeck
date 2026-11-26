@@ -410,7 +410,7 @@ func seedDemoSubscription(tx *gorm.DB, now time.Time) error {
 		{"London", "GB", 211, [2]int{19, 76}},
 		{"Hong Kong", "HK", 28, [2]int{13, 29}},
 	}
-	methods := []string{"proxy_http", "proxy_download", "browser_http", "tcp", "browser_tcp", "tcp_fallback"}
+	methods := []string{"proxy_http", "proxy_download", "browser_http", "tcp", "proxy_http", "tcp_fallback"}
 	nodes := make([]models.SubNode, 0, 12)
 	for i, location := range locations {
 		for j, score := range location.scores {

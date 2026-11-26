@@ -146,7 +146,7 @@ const SubscriptionsPageInner: React.FC = () => {
       ) {
         return false;
       }
-      if (onlyAvailable && (!n.enabled || n.latency_ms < 0)) {
+      if (onlyAvailable && (!n.enabled || n.test_status !== "ok")) {
         return false;
       }
       if (q) {
@@ -711,13 +711,17 @@ const SubscriptionsPageInner: React.FC = () => {
                         <div className="inline-flex flex-wrap items-center gap-1.5">
                           <span
                             title={node.test_message || undefined}
-                            className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${getLatencyBadgeClass(
-                              node.latency_ms,
-                            )}`}
+                            className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${
+                              node.test_status === "unknown"
+                                ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300"
+                                : getLatencyBadgeClass(node.latency_ms)
+                            }`}
                           >
-                            {node.latency_ms < 0 && node.test_status === "error"
-                              ? t("pulse.common.failed")
-                              : formatLatency(node.latency_ms)}
+                            {node.test_status === "unknown"
+                              ? t("pulse.common.unknownConnectivity")
+                              : node.latency_ms < 0 && node.test_status === "error"
+                                ? t("pulse.common.failed")
+                                : formatLatency(node.latency_ms)}
                           </span>
                           {methodBadge && (
                             <span

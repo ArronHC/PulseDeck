@@ -73,7 +73,7 @@ docker compose -f docker-compose.demo.yml up -d
 - **服务状态监控（`/uptime` & `/admin/uptime`）**：内置 `HTTP/HTTPS`、`关键词`、`TCP`、`Ping` 探测引擎，60 格心跳色块条、30 天历史保留、故障时间线与 **Uptime Kuma** 状态同步。
 - **订阅地图 · 流式测速 · 自动化告警（`/subscriptions` & `/admin/subscriptions`）**：
   - 支持 `Base64`/URI（`VMess / VLESS / Trojan / Shadowsocks / Hysteria2 / TUIC / SOCKS5 / HTTP`）、`Clash / Mihomo YAML`、`Sing-box JSON` 与 `Subscription-Userinfo` 流量/到期解析。
-  - **测试方式清晰可辨 + 流式实时输出**：默认使用**用户本机网络环境**测速，同时支持**服务端 SSE 流式代理/下载/TCP 测速**；每个节点均清晰标注测试方式（`代理延迟` / `下载测速` / `TCP 连通` / `TCP 回退` / `本机 HTTP/TCP`），并支持按延迟、下载速度、欺诈分、名称与地区排序。
+  - **测试方式清晰可辨 + 流式实时输出**：默认推荐**服务端 SSE 流式真实代理测速**（`代理延迟` / `下载测速` / `TCP 连通`），同时提供**浏览器本机受限探测**；每个节点均清晰标注测试方式与状态（`代理延迟` / `下载测速` / `TCP 连通` / `TCP 回退` / `本机 HTTP` / `浏览器探测估算`），并支持按延迟、下载速度、欺诈分、名称与地区排序。
   - **真正自动化运维**：支持按订阅定时自动测速、定期 IPPure 纯净度巡检、**订阅到期提前告警**与 **IP 质量下降告警**（欺诈分跃升、住宅降级机房、原生降级广播）。
 - **精简可控**：已移除冗余 WebSSH/文件管理器、主题市场与插件系统，缩小攻击面。
 

@@ -172,6 +172,13 @@ func TestAdminSubscriptionSpeedReportsAndCapabilities(t *testing.T) {
 	require.NoError(t, db.First(&node, node.ID).Error)
 	require.Equal(t, int64(20), node.LatencyMS)
 	require.Equal(t, "browser_http", node.TestMethod)
+
+	unknownBody := fmt.Sprintf(`{"results":[{"node_id":%d,"test_status":"unknown","test_method":"browser_probe","latency_ms":42,"test_message":"probe inconclusive"}]}`, node.ID)
+	unknownNodes := dataFrom[[]hub.Node](t, request(r, "POST", report, unknownBody, true))
+	require.Len(t, unknownNodes, 1)
+	require.Equal(t, "unknown", unknownNodes[0].TestStatus)
+	require.Equal(t, "browser_probe", unknownNodes[0].TestMethod)
+	require.Equal(t, int64(0), unknownNodes[0].LatencyMS)
 }
 
 func TestUptimeAndOverviewHTTPContract(t *testing.T) {

@@ -227,6 +227,7 @@ export type SpeedTestMethod =
   | "proxy_download"
   | "browser_http"
   | "browser_tcp"
+  | "browser_probe"
   | string;
 
 export interface IPPureInfo {
@@ -260,9 +261,9 @@ export interface SubscriptionNode {
   lat: number;
   lng: number;
   enabled: boolean;
-  latency_ms: number; // -1 if failed, 0 if untested
+  latency_ms: number; // -1 if failed, 0 if untested or unknown
   download_mbps: number;
-  test_status: "untested" | "ok" | "timeout" | "error" | string;
+  test_status: "untested" | "ok" | "timeout" | "error" | "unknown" | string;
   test_message?: string;
   test_method?: SpeedTestMethod;
   tested_at?: string;
@@ -273,7 +274,7 @@ export interface SpeedResultReportItem {
   node_id: number;
   latency_ms: number;
   download_mbps?: number;
-  test_status: "untested" | "ok" | "timeout" | "error" | string;
+  test_status: "untested" | "ok" | "timeout" | "error" | "unknown" | string;
   test_message?: string;
   test_method?: SpeedTestMethod;
 }
