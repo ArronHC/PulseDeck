@@ -17,7 +17,7 @@ export const formatLoginRedirect = (target: string | null) => {
 };
 
 export const resolveLoginRedirect = (value: string | null) => {
-  return formatLoginRedirect(value) ?? "/admin/dashboard";
+  return formatLoginRedirect(value) ?? "/admin/overview";
 };
 
 export const loginPath = (pathname: string, search = "") => {

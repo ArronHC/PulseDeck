@@ -195,6 +195,8 @@ export interface SubscriptionItem {
   id: number;
   name: string;
   source_type: "url" | "manual" | string;
+  url?: string;
+  raw_content?: string;
   masked_url?: string;
   upload: number;
   download: number;
@@ -274,4 +276,62 @@ export interface MapMarker {
 export interface SubscriptionMapData {
   countries: MapCountry[];
   markers: MapMarker[];
+}
+
+// ============================================================================
+// Install & Admin Onboarding Types
+// ============================================================================
+
+export interface InstallStatusData {
+  state: string;
+  required: boolean;
+  default_sitename?: string;
+  default_description?: string;
+  default_metric_dsn?: string;
+}
+
+export interface InstallTestDBResult {
+  ok: boolean;
+  driver: string;
+  message: string;
+}
+
+export interface InstallCompletePayload {
+  username: string;
+  password: string;
+  sitename: string;
+  description: string;
+  metric_dsn: string;
+  private_site?: boolean;
+  language?: string;
+}
+
+export interface AdminOnboardingCounts {
+  servers: number;
+  uptime_monitors: number;
+  subscriptions: number;
+  subscription_nodes: number;
+  plugins: number;
+}
+
+export interface AdminOnboardingSteps {
+  add_server: boolean;
+  add_uptime: boolean;
+  add_subscription: boolean;
+  configure_alerts: boolean;
+}
+
+export interface AdminOnboardingState {
+  completed: boolean;
+  dismissed: boolean;
+  current_step: number;
+  counts: AdminOnboardingCounts;
+  steps: AdminOnboardingSteps;
+}
+
+export interface AdminOnboardingUpdatePayload {
+  completed?: boolean;
+  dismissed?: boolean;
+  current_step?: number;
+  reset?: boolean;
 }

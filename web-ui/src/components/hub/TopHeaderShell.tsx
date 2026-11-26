@@ -61,8 +61,8 @@ const NAV_TABS: NavTab[] = [
   },
   {
     key: "admin",
-    label: "管理设置",
-    to: "/admin/dashboard",
+    label: "管理后台",
+    to: "/admin/overview",
     icon: Settings,
     match: (p) => p.startsWith("/admin"),
   },
@@ -179,9 +179,11 @@ const TopHeaderInner: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  window.location.href = account?.logged_in
-                    ? "/admin/dashboard"
-                    : loginRedirect;
+                  if (account?.logged_in) {
+                    navigate("/admin/overview");
+                  } else {
+                    navigate(loginRedirect);
+                  }
                 }}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] transition-colors hover:bg-[var(--hub-canvas)]"
               >
@@ -212,7 +214,9 @@ const TopHeaderInner: React.FC = () => {
               aria-label="主导航"
               className="hub-no-scrollbar flex h-full items-center gap-5 overflow-x-auto"
             >
-              {NAV_TABS.map((tab) => {
+              {NAV_TABS.filter(
+                (tab) => tab.key !== "admin" || Boolean(account?.logged_in),
+              ).map((tab) => {
                 const active = tab.match(location.pathname);
                 const Icon = tab.icon;
                 return (

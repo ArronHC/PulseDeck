@@ -20,9 +20,8 @@ import (
 	"github.com/komari-monitor/komari/web/api"
 )
 
-// Plugin market mirrors the theme market: admin-managed catalog sources that
-// publish ZIP packages containing komari-plugin.json. The generic URL
-// download/validation helpers are shared with the theme market.
+// The plugin market uses admin-managed catalog sources that publish ZIP
+// packages containing komari-plugin.json.
 
 const defaultPluginMarketURL = "https://raw.githubusercontent.com/komari-monitor/plugin-market/main/v1.json"
 

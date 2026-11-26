@@ -4,22 +4,27 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { toast } from "sonner";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
-import { saveThemeSettings } from "@/utils/saveThemeSettings";
 import { getMetricLabel } from "./catalog";
 import { DASHBOARD_TEMPLATE_KEY } from "./constants";
 import { parseDashboardTemplate } from "./dashboard";
 import type { ChartSize, DashboardChart, MetricDefinition } from "./types";
 
-/** 保存失败提示里的原因 */
-const saveErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
+const LOCAL_TEMPLATE_STORAGE_KEY = "pulsedeck.instance.chart_template";
 
-/** 图表看板：卡片列表（由全局模板初始化）、增删改排序，以及保存为全局模板 */
+const readLocalTemplate = () => {
+  try {
+    return localStorage.getItem(LOCAL_TEMPLATE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+/** 图表看板：卡片列表（由本地偏好或全局模板初始化）、增删改排序 */
 export function useDashboard(definitionMap: Map<string, MetricDefinition>) {
   const { t } = useTranslation();
-  const { publicInfo, refresh: refreshPublicInfo } = usePublicInfo();
+  const { publicInfo } = usePublicInfo();
   const globalDashboardTemplate =
-    publicInfo?.theme_settings?.[DASHBOARD_TEMPLATE_KEY];
+    readLocalTemplate() ?? publicInfo?.theme_settings?.[DASHBOARD_TEMPLATE_KEY];
   // parseDashboardTemplate 已经返回规范化后的数组，后续所有变更保持未修改卡片的对象引用稳定
   const [charts, setCharts] = useState<DashboardChart[]>(() =>
     parseDashboardTemplate(globalDashboardTemplate),
@@ -70,22 +75,23 @@ export function useDashboard(definitionMap: Map<string, MetricDefinition>) {
   }, [globalDashboardTemplate]);
 
   const saveGlobalTemplate = useCallback(async () => {
-    const theme = publicInfo?.theme;
-    if (!theme) return;
-
     setSavingGlobalTemplate(true);
     try {
-      await saveThemeSettings(theme, {
-        [DASHBOARD_TEMPLATE_KEY]: JSON.stringify(chartsRef.current, null, 2),
-      });
-      toast.success(t("chart.globalTemplateSaved"));
-      refreshPublicInfo();
+      localStorage.setItem(
+        LOCAL_TEMPLATE_STORAGE_KEY,
+        JSON.stringify(chartsRef.current, null, 2),
+      );
+      toast.success(t("chart.globalTemplateSaved", "已保存当前图表布局"));
     } catch (saveError) {
-      toast.error(`${t("chart.globalTemplateSaveFailed")}: ${saveErrorMessage(saveError)}`);
+      toast.error(
+        `${t("chart.globalTemplateSaveFailed", "保存失败")}: ${
+          saveError instanceof Error ? saveError.message : String(saveError)
+        }`,
+      );
     } finally {
       setSavingGlobalTemplate(false);
     }
-  }, [publicInfo, refreshPublicInfo, t]);
+  }, [t]);
 
   const addMetric = useCallback(
     (chartId: string, metricKey: string) => {

@@ -119,7 +119,7 @@ export default function MarketPluginCard({
                     )
                   : t(
                       "plugin.market_update_required",
-                      "Komari update required",
+                      "Panel update required",
                     )}
               </Badge>
             )}

@@ -40,8 +40,11 @@ const Servers = page(
 const Uptime = page(() => import("./pages/Uptime"));
 const Subscriptions = page(() => import("./pages/Subscriptions"));
 const AdminLayout = page(() => import("./pages/admin/_layout"));
-const Admin = page(() => import("./pages/admin"));
-const Dashboard = page(() => import("./pages/admin/dashboard"));
+const AdminOverview = page(() => import("./pages/admin/Overview"));
+const AdminServers = page(() => import("./pages/admin"));
+const AdminUptime = page(() => import("./pages/admin/UptimeManage"));
+const AdminSubscriptions = page(() => import("./pages/admin/SubscriptionsManage"));
+const PluginMarket = page(() => import("./pages/admin/market/plugins"));
 const NotFound = page(() => import("./pages/404"));
 
 export const routes: RouteObject[] = [
@@ -92,37 +95,30 @@ export const routes: RouteObject[] = [
     path: "/admin",
     ...AdminLayout,
     children: [
-      { index: true, element: React.createElement(Navigate, { to: "/admin/dashboard", replace: true }) },
+      { index: true, element: React.createElement(Navigate, { to: "/admin/overview", replace: true }) },
       {
-        path: "dashboard",
-        ...Dashboard,
+        path: "overview",
+        ...AdminOverview,
       },
       {
         path: "servers",
-        ...Admin,
+        ...AdminServers,
       },
       {
-        path: "theme_managed",
-        ...page(() => import("./pages/admin/theme_managed.tsx")),
+        path: "uptime",
+        ...AdminUptime,
       },
       {
-        path: "theme_raw",
-        ...page(() => import("./pages/admin/theme_raw.tsx")),
-      },
-      {
-        path: "themes",
-        ...page(() => import("./pages/admin/themes")),
-      },
-      {
-        path: "theme",
-        element: React.createElement(Navigate, {
-          to: "/admin/themes",
-          replace: true,
-        }),
+        path: "subscriptions",
+        ...AdminSubscriptions,
       },
       {
         path: "plugins",
         ...page(() => import("./pages/admin/plugins")),
+      },
+      {
+        path: "plugins/market",
+        ...PluginMarket,
       },
       {
         path: "plugins/config",
@@ -133,12 +129,8 @@ export const routes: RouteObject[] = [
         ...page(() => import("./pages/admin/plugin_page")),
       },
       {
-        path: "market/themes",
-        ...page(() => import("./pages/admin/market/themes")),
-      },
-      {
         path: "market/plugins",
-        ...page(() => import("./pages/admin/market/plugins")),
+        ...PluginMarket,
       },
       {
         path: "sessions",
@@ -162,13 +154,6 @@ export const routes: RouteObject[] = [
           {
             path: "site",
             ...page(() => import("./pages/admin/settings/site")),
-          },
-          {
-            path: "theme",
-            element: React.createElement(Navigate, {
-              to: "/admin/themes",
-              replace: true,
-            }),
           },
           {
             path: "custom",
@@ -238,12 +223,8 @@ export const routes: RouteObject[] = [
       {
         path: "exec",
         ...page(() => import("./pages/admin/exec")),
-      }
+      },
     ],
-  },
-  {
-    path: "/terminal",
-    ...page(() => import("./pages/terminal")),
   },
   {
     path: "/manage/*",

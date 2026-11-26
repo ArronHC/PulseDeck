@@ -10,19 +10,18 @@ const ManagePage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    navigate("/admin/dashboard", { replace: true });
+    navigate("/admin/overview", { replace: true });
   }, [navigate]);
 
   return (
     <Suspense fallback={null}>
       <PageMotion className="km-page-manage flex flex-col items-center justify-center gap-km-group h-screen px-km-block">
         <p>
-          This page is provided for compatibility with Isatidia's frontend
-          program.
+          This page is provided for compatibility.
         </p>
         <p>
-          If you are looking for the admin panel, please go to{" "}
-          <a href="/admin/dashboard">/admin/dashboard</a>.
+          If you are looking for the admin console, please go to{" "}
+          <a href="/admin/overview">/admin/overview</a>.
         </p>
       </PageMotion>
     </Suspense>

@@ -198,7 +198,7 @@ func adminTestSendMessage(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc
 	if err := messageSender.SendNotificationWithActor(ip, actor, models.EventMessage{
 		Event:   "Test",
 		Time:    time.Now().UTC(),
-		Message: "This is a test message from Komari.",
+		Message: "This is a test message from PulseDeck.",
 	}); err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to send message: "+err.Error(), nil)
 	}

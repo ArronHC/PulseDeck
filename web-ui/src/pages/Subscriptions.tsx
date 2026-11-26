@@ -1,26 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
-  Activity,
+  ArrowRight,
   ChevronDown,
   ChevronUp,
-  Gauge,
   Globe,
   Info,
   LogIn,
-  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
-  Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import { AccountProvider, useAccount } from "@/contexts/AccountContext";
 import {
-  checkIPPureNow,
-  createSubscription,
-  deleteSubscription,
   fetchIPPureSelf,
   fetchSubscriptionMap,
   fetchSubscriptionNodes,
@@ -30,10 +23,6 @@ import {
   formatRelativeTime,
   getFraudTier,
   getLatencyBadgeClass,
-  patchSubscriptionNode,
-  refreshSubscription,
-  testSubscriptionPurity,
-  testSubscriptionSpeed,
 } from "@/lib/hubApi";
 import type {
   IPPureInfo,
@@ -45,7 +34,6 @@ import { formatBytes } from "@/utils/unitHelper";
 import { countryCodeToFlagEmoji } from "@/utils/regionCode";
 import { HubCard, HubEmptyState } from "@/components/hub/HubUi";
 import { WorldMapCard, type MapMode } from "@/components/hub/WorldMapCard";
-import { toast } from "sonner";
 import { loginPath } from "@/utils/loginRedirect";
 
 const SubscriptionsPageInner: React.FC = () => {
@@ -61,8 +49,6 @@ const SubscriptionsPageInner: React.FC = () => {
   });
   const [ippureSelf, setIppureSelf] = useState<IPPureInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [busyGlobal, setBusyGlobal] = useState<string | null>(null);
-  const [busyNodeId, setBusyNodeId] = useState<number | null>(null);
 
   // Map & Table filters
   const [mapMode, setMapMode] = useState<MapMode>("latency");
@@ -76,25 +62,11 @@ const SubscriptionsPageInner: React.FC = () => {
     searchParams.get("search") || "",
   );
 
-  // IPPure instant check bar
+  // Read-only IPPure self summary banner
   const [purityBarOpen, setPurityBarOpen] = useState<boolean>(true);
-  const [proxyCheckUrl, setProxyCheckUrl] = useState<string>("");
-  const [checkingSelfPurity, setCheckingSelfPurity] = useState<boolean>(false);
-  const [liveCheckResult, setLiveCheckResult] = useState<IPPureInfo | null>(null);
 
   // Purity popover
   const [inspectedNode, setInspectedNode] = useState<SubscriptionNode | null>(null);
-
-  // Add Subscription / Raw Nodes Modal
-  const [addModalOpen, setAddModalOpen] = useState<boolean>(false);
-  const [addMode, setAddMode] = useState<"url" | "manual">("url");
-  const [subForm, setSubForm] = useState({
-    name: "",
-    url: "",
-    raw_content: "",
-    auto_update_hours: 12,
-  });
-  const [savingSub, setSavingSub] = useState<boolean>(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -181,115 +153,16 @@ const SubscriptionsPageInner: React.FC = () => {
     [sortedCountries],
   );
 
-  const handleCreateSubscription = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!subForm.name.trim()) {
-      toast.error("请输入订阅或分组名称");
-      return;
-    }
-    if (addMode === "url" && !subForm.url.trim()) {
-      toast.error("请输入订阅链接 URL");
-      return;
-    }
-    if (addMode === "manual" && !subForm.raw_content.trim()) {
-      toast.error("请粘贴节点链接 (每行一条)");
-      return;
-    }
-    setSavingSub(true);
-    try {
-      await createSubscription({
-        name: subForm.name.trim(),
-        url: addMode === "url" ? subForm.url.trim() : undefined,
-        raw_content: addMode === "manual" ? subForm.raw_content.trim() : undefined,
-        auto_update_hours: subForm.auto_update_hours,
-      });
-      toast.success("已添加订阅并解析节点");
-      setAddModalOpen(false);
-      setSubForm({ name: "", url: "", raw_content: "", auto_update_hours: 12 });
-      await loadAll();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "添加失败");
-    } finally {
-      setSavingSub(false);
-    }
-  };
-
-  const handleRefreshAll = async () => {
-    setBusyGlobal("refresh");
-    try {
-      const urlSubs = subscriptions.filter((s) => s.source_type === "url" && s.enabled);
-      await Promise.all(urlSubs.map((s) => refreshSubscription(s.id)));
-      toast.success(`已刷新 ${urlSubs.length} 个订阅`);
-      await loadAll();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "刷新订阅失败");
-    } finally {
-      setBusyGlobal(null);
-    }
-  };
-
-  const handleGlobalSpeedtest = async (subscriptionId?: number) => {
-    setBusyGlobal("speed");
-    try {
-      await testSubscriptionSpeed({
-        subscription_id: subscriptionId,
-        mode: "http",
-        concurrency: 8,
-      });
-      toast.success("测速已完成");
-      await loadAll();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "测速失败");
-    } finally {
-      setBusyGlobal(null);
-    }
-  };
-
-  const handleGlobalPurity = async (subscriptionId?: number) => {
-    setBusyGlobal("purity");
-    try {
-      await testSubscriptionPurity({
-        subscription_id: subscriptionId,
-      });
-      toast.success("IPPure 纯净度检测已完成");
-      await loadAll();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "纯净度检测失败");
-    } finally {
-      setBusyGlobal(null);
-    }
-  };
-
-  const handleCheckSelfOrProxy = async () => {
-    setCheckingSelfPurity(true);
-    try {
-      const res = await checkIPPureNow({
-        proxy_url: proxyCheckUrl.trim() || undefined,
-      });
-      setLiveCheckResult(res);
-      if (!proxyCheckUrl.trim()) {
-        setIppureSelf(res);
-      }
-      toast.success("IPPure 检测完成");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "IPPure 请求失败");
-    } finally {
-      setCheckingSelfPurity(false);
-    }
-  };
-
-  const activePurityCard = liveCheckResult || ippureSelf;
-
   return (
     <div className="space-y-6">
-      {/* Header & Admin Action Bar */}
+      {/* Header (Read-Only Observability) */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--hub-ink)]">
             订阅与节点监控
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-            全球分布地图、并发延迟测速与 IPPure 住宅/原生 IP 纯净度检测
+            全球分布地图、延迟概览与 IPPure 住宅/原生 IP 纯净度检测
           </p>
         </div>
 
@@ -298,71 +171,25 @@ const SubscriptionsPageInner: React.FC = () => {
             type="button"
             onClick={() => void loadAll()}
             disabled={loading}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)]"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>刷新</span>
           </button>
 
-          {isAdmin ? (
-            <>
-              <button
-                type="button"
-                disabled={busyGlobal !== null}
-                onClick={() => void handleRefreshAll()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
-              >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${busyGlobal === "refresh" ? "animate-spin" : ""}`}
-                />
-                <span>刷新全部订阅</span>
-              </button>
-              <button
-                type="button"
-                disabled={busyGlobal !== null}
-                onClick={() => void handleGlobalSpeedtest()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
-              >
-                <Zap className="h-3.5 w-3.5 text-blue-600" />
-                <span>{busyGlobal === "speed" ? "测速中..." : "一键测速"}</span>
-              </button>
-              <button
-                type="button"
-                disabled={busyGlobal !== null}
-                onClick={() => void handleGlobalPurity()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
-              >
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                <span>{busyGlobal === "purity" ? "检测中..." : "一键测纯净度"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAddModalOpen(true)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>添加订阅/节点</span>
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = loginPath(
-                  window.location.pathname,
-                  window.location.search,
-                );
-              }}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)]"
+          {isAdmin && (
+            <Link
+              to="/admin/subscriptions"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline transition-colors hover:bg-[var(--hub-canvas)]"
             >
-              <LogIn className="h-3.5 w-3.5" />
-              <span>管理员登录后可测速/添加订阅</span>
-            </button>
+              <span>管理订阅与节点</span>
+              <ArrowRight className="h-3.5 w-3.5 text-[var(--hub-muted)]" />
+            </Link>
           )}
         </div>
       </div>
 
-      {/* Top Subscription Cards Strip */}
+      {/* Top Subscription Cards Strip (Read-Only) */}
       {subscriptions.length > 0 && (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {subscriptions.map((sub) => {
@@ -429,66 +256,9 @@ const SubscriptionsPageInner: React.FC = () => {
                   <span className="font-mono tabular-nums">
                     同步于 {formatRelativeTime(sub.last_synced_at)}
                   </span>
-
-                  {isAdmin && (
-                    <div className="flex items-center gap-1">
-                      {sub.source_type === "url" && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await refreshSubscription(sub.id);
-                              toast.success("已刷新订阅");
-                              await loadAll();
-                            } catch (err) {
-                              toast.error(
-                                err instanceof Error ? err.message : "刷新失败",
-                              );
-                            }
-                          }}
-                          title="刷新订阅"
-                          className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-[var(--hub-ink)]"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void handleGlobalSpeedtest(sub.id)}
-                        title="测速此订阅"
-                        className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-blue-600"
-                      >
-                        <Zap className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleGlobalPurity(sub.id)}
-                        title="检测纯净度"
-                        className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-emerald-600"
-                      >
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!window.confirm(`确定删除订阅「${sub.name}」？`)) return;
-                          try {
-                            await deleteSubscription(sub.id);
-                            toast.success("已删除订阅");
-                            await loadAll();
-                          } catch (err) {
-                            toast.error(
-                              err instanceof Error ? err.message : "删除失败",
-                            );
-                          }
-                        }}
-                        title="删除订阅"
-                        className="rounded p-1 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/60"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
+                  <span className="font-mono text-[10px]">
+                    {sub.enabled ? "已启用" : "已停用"}
+                  </span>
                 </div>
               </HubCard>
             );
@@ -598,7 +368,7 @@ const SubscriptionsPageInner: React.FC = () => {
         </HubCard>
       </div>
 
-      {/* IPPure Instant Purity Check Bar */}
+      {/* Read-Only IPPure Self Exit Summary Banner */}
       <HubCard className="overflow-hidden">
         <div
           onClick={() => setPurityBarOpen((o) => !o)}
@@ -607,22 +377,22 @@ const SubscriptionsPageInner: React.FC = () => {
           <div className="flex items-center gap-2.5">
             <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <span className="text-sm font-semibold text-[var(--hub-ink)]">
-              IPPure 即时 IP 纯净度检测
+              本机出口 IPPure 纯净度档案
             </span>
             <span className="hidden sm:inline text-xs text-[var(--hub-muted)]">
-              调用 my.ippure.com/v1/info 识别欺诈分、ASN 与住宅/广播属性
+              展示服务端最近一次 IPPure 欺诈分、ASN 与住宅/广播属性快照
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            {activePurityCard && !activePurityCard.error && (
+            {ippureSelf && !ippureSelf.error && (
               <span
                 className={`rounded-full border px-2 py-0.5 font-mono text-[11px] tabular-nums ${
-                  getFraudTier(activePurityCard.fraud_score).badgeClass
+                  getFraudTier(ippureSelf.fraud_score).badgeClass
                 }`}
               >
-                {activePurityCard.ip} · 评分 {activePurityCard.fraud_score} (
-                {getFraudTier(activePurityCard.fraud_score).shortLabel})
+                {ippureSelf.ip} · 评分 {ippureSelf.fraud_score} (
+                {getFraudTier(ippureSelf.fraud_score).shortLabel})
               </span>
             )}
             {purityBarOpen ? (
@@ -635,122 +405,110 @@ const SubscriptionsPageInner: React.FC = () => {
 
         {purityBarOpen && (
           <div className="border-t border-[var(--hub-border)] bg-[var(--hub-canvas)]/40 px-4 py-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              {activePurityCard ? (
-                activePurityCard.error ? (
-                  <div className="text-xs text-rose-600">
-                    最近检测失败: {activePurityCard.error}
+            {ippureSelf ? (
+              ippureSelf.error ? (
+                <div className="text-xs text-rose-600">
+                  最近检测异常: {ippureSelf.error}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-4 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg border font-mono text-sm font-bold tabular-nums ${
+                        getFraudTier(ippureSelf.fraud_score).badgeClass
+                      }`}
+                    >
+                      {ippureSelf.fraud_score}
+                    </div>
+                    <div>
+                      <div className="font-mono font-semibold text-[var(--hub-ink)]">
+                        {ippureSelf.ip}
+                      </div>
+                      <div className="text-[11px] text-[var(--hub-muted)]">
+                        {countryCodeToFlagEmoji(ippureSelf.country_code || "")}{" "}
+                        {ippureSelf.country} · {ippureSelf.city || ippureSelf.region}
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-4 text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`flex h-10 w-10 items-center justify-center rounded-lg border font-mono text-sm font-bold tabular-nums ${
-                          getFraudTier(activePurityCard.fraud_score).badgeClass
+
+                  <div className="h-7 w-px bg-[var(--hub-border)] hidden sm:block" />
+
+                  <div className="space-y-0.5 font-mono text-[11px]">
+                    <div className="text-[var(--hub-ink)]">
+                      AS{ippureSelf.asn} · {ippureSelf.as_organization}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`rounded border px-1.5 py-0 text-[10px] ${
+                          ippureSelf.is_residential
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            : "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
                         }`}
                       >
-                        {activePurityCard.fraud_score}
-                      </div>
-                      <div>
-                        <div className="font-mono font-semibold text-[var(--hub-ink)]">
-                          {activePurityCard.ip}
-                        </div>
-                        <div className="text-[11px] text-[var(--hub-muted)]">
-                          {countryCodeToFlagEmoji(activePurityCard.country_code || "")}{" "}
-                          {activePurityCard.country} · {activePurityCard.city || activePurityCard.region}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="h-7 w-px bg-[var(--hub-border)] hidden sm:block" />
-
-                    <div className="space-y-0.5 font-mono text-[11px]">
-                      <div className="text-[var(--hub-ink)]">
-                        AS{activePurityCard.asn} · {activePurityCard.as_organization}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span
-                          className={`rounded border px-1.5 py-0 text-[10px] ${
-                            activePurityCard.is_residential
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300"
-                              : "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-                          }`}
-                        >
-                          {activePurityCard.is_residential ? "住宅 IP" : "机房 IP"}
-                        </span>
-                        <span
-                          className={`rounded border px-1.5 py-0 text-[10px] ${
-                            !activePurityCard.is_broadcast
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300"
-                              : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300"
-                          }`}
-                        >
-                          {activePurityCard.is_broadcast ? "广播 IP" : "原生 IP"}
-                        </span>
-                        <span className="text-[var(--hub-muted)]">
-                          {formatRelativeTime(activePurityCard.checked_at)}
-                        </span>
-                      </div>
+                        {ippureSelf.is_residential ? "住宅 IP" : "机房 IP"}
+                      </span>
+                      <span
+                        className={`rounded border px-1.5 py-0 text-[10px] ${
+                          !ippureSelf.is_broadcast
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300"
+                        }`}
+                      >
+                        {ippureSelf.is_broadcast ? "广播 IP" : "原生 IP"}
+                      </span>
+                      <span className="text-[var(--hub-muted)]">
+                        更新于 {formatRelativeTime(ippureSelf.checked_at)}
+                      </span>
                     </div>
                   </div>
-                )
-              ) : (
-                <div className="text-xs text-[var(--hub-muted)]">
-                  尚无本机出口或指定代理的 IPPure 检测记录
                 </div>
-              )}
-
-              {isAdmin && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    value={proxyCheckUrl}
-                    onChange={(e) => setProxyCheckUrl(e.target.value)}
-                    placeholder="可选代理 http:// 或 socks5:// (留空测本机出口)"
-                    className="h-8 w-64 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 font-mono text-xs text-[var(--hub-ink)] placeholder:text-[var(--hub-muted)]"
-                  />
-                  <button
-                    type="button"
-                    disabled={checkingSelfPurity}
-                    onClick={() => void handleCheckSelfOrProxy()}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-                  >
-                    <Gauge className="h-3.5 w-3.5" />
-                    <span>
-                      {checkingSelfPurity
-                        ? "检测中..."
-                        : proxyCheckUrl.trim()
-                          ? "检测代理 IPPure"
-                          : "检测当前出口 IPPure"}
-                    </span>
-                  </button>
-                </div>
-              )}
-            </div>
+              )
+            ) : (
+              <div className="text-xs text-[var(--hub-muted)]">
+                尚无本机出口 IPPure 检测快照
+                {isAdmin && (
+                  <>
+                    ，可前往{" "}
+                    <Link to="/admin/subscriptions" className="text-blue-600 hover:underline dark:text-blue-400">
+                      管理后台
+                    </Link>{" "}
+                    发起即时探测
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </HubCard>
 
-      {/* Bottom Full-Width Node Table */}
+      {/* Bottom Full-Width Node Table (Read-Only) */}
       {nodes.length === 0 && !loading ? (
         <HubEmptyState
           icon={Globe}
           title="暂无订阅节点"
           description={
             isAdmin
-              ? "点击右上角「添加订阅/节点」导入机场订阅 URL 或手动粘贴节点链接，即可开启全球分布与 IPPure 纯净度分析。"
+              ? "当前尚未导入任何订阅或节点，前往管理后台导入机场订阅 URL 或手动粘贴节点即可开启全球分布与 IPPure 纯净度分析。"
               : "管理员尚未导入订阅或节点。"
           }
           action={
             isAdmin ? (
-              <button
-                type="button"
-                onClick={() => setAddModalOpen(true)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+              <Link
+                to="/admin/subscriptions"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-xs font-medium text-white no-underline hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
               >
-                <Plus className="h-3.5 w-3.5" />
-                <span>导入第一个订阅</span>
-              </button>
-            ) : undefined
+                <span>前往控制台导入订阅</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : (
+              <Link
+                to={loginPath("/admin/subscriptions")}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline hover:bg-[var(--hub-canvas)]"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                <span>管理员登录</span>
+              </Link>
+            )
           }
         />
       ) : (
@@ -838,7 +596,6 @@ const SubscriptionsPageInner: React.FC = () => {
                   <th className="px-4 py-2.5">延迟</th>
                   <th className="px-4 py-2.5">下载速度</th>
                   <th className="px-4 py-2.5">IPPure 纯净度</th>
-                  {isAdmin && <th className="px-4 py-2.5 text-right">操作</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--hub-border)]">
@@ -928,89 +685,6 @@ const SubscriptionsPageInner: React.FC = () => {
                           </span>
                         )}
                       </td>
-
-                      {isAdmin && (
-                        <td className="px-4 py-3 whitespace-nowrap text-right">
-                          <div className="inline-flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={busyNodeId === node.id}
-                              onClick={async () => {
-                                setBusyNodeId(node.id);
-                                try {
-                                  await testSubscriptionSpeed({
-                                    node_ids: [node.id],
-                                    mode: "http",
-                                  });
-                                  await loadAll();
-                                  toast.success("单节点测速完成");
-                                } catch (err) {
-                                  toast.error(
-                                    err instanceof Error ? err.message : "测速失败",
-                                  );
-                                } finally {
-                                  setBusyNodeId(null);
-                                }
-                              }}
-                              title="测速"
-                              className="rounded p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-blue-600 disabled:opacity-50"
-                            >
-                              <Zap className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busyNodeId === node.id}
-                              onClick={async () => {
-                                setBusyNodeId(node.id);
-                                try {
-                                  await testSubscriptionPurity({ node_ids: [node.id] });
-                                  await loadAll();
-                                  toast.success("单节点纯净度检测完成");
-                                } catch (err) {
-                                  toast.error(
-                                    err instanceof Error
-                                      ? err.message
-                                      : "纯净度检测失败",
-                                  );
-                                } finally {
-                                  setBusyNodeId(null);
-                                }
-                              }}
-                              title="测纯净度"
-                              className="rounded p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-emerald-600 disabled:opacity-50"
-                            >
-                              <ShieldCheck className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busyNodeId === node.id}
-                              onClick={async () => {
-                                setBusyNodeId(node.id);
-                                try {
-                                  await patchSubscriptionNode(node.id, {
-                                    enabled: !node.enabled,
-                                  });
-                                  await loadAll();
-                                } catch (err) {
-                                  toast.error(
-                                    err instanceof Error ? err.message : "更新失败",
-                                  );
-                                } finally {
-                                  setBusyNodeId(null);
-                                }
-                              }}
-                              title={node.enabled ? "禁用节点" : "启用节点"}
-                              className={`rounded px-2 py-1 text-[11px] font-medium ${
-                                node.enabled
-                                  ? "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/60"
-                                  : "text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                              }`}
-                            >
-                              {node.enabled ? "启用" : "停用"}
-                            </button>
-                          </div>
-                        </td>
-                      )}
                     </tr>
                   );
                 })}
@@ -1095,144 +769,6 @@ const SubscriptionsPageInner: React.FC = () => {
                 </span>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Subscription / Manual Nodes Modal */}
-      {addModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 backdrop-blur-[2px]"
-          onClick={() => setAddModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-lg rounded-xl border border-[var(--hub-border)] bg-[var(--hub-surface)] p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
-              <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                添加订阅 / 手动节点
-              </h3>
-              <button
-                type="button"
-                onClick={() => setAddModalOpen(false)}
-                className="rounded p-1 text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-4 inline-flex rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setAddMode("url")}
-                className={`rounded-md px-3 py-1.5 font-medium ${
-                  addMode === "url"
-                    ? "bg-[var(--hub-surface)] text-[var(--hub-ink)] shadow-xs"
-                    : "text-[var(--hub-muted)]"
-                }`}
-              >
-                订阅链接 (Clash / Base64)
-              </button>
-              <button
-                type="button"
-                onClick={() => setAddMode("manual")}
-                className={`rounded-md px-3 py-1.5 font-medium ${
-                  addMode === "manual"
-                    ? "bg-[var(--hub-surface)] text-[var(--hub-ink)] shadow-xs"
-                    : "text-[var(--hub-muted)]"
-                }`}
-              >
-                手动节点列表
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateSubscription} className="mt-4 space-y-3 text-xs">
-              <div>
-                <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                  名称
-                </label>
-                <input
-                  required
-                  value={subForm.name}
-                  onChange={(e) =>
-                    setSubForm((f) => ({ ...f, name: e.target.value }))
-                  }
-                  placeholder="例如：主用高速订阅"
-                  className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 text-sm text-[var(--hub-ink)]"
-                />
-              </div>
-
-              {addMode === "url" ? (
-                <>
-                  <div>
-                    <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                      订阅 URL
-                    </label>
-                    <input
-                      required
-                      value={subForm.url}
-                      onChange={(e) =>
-                        setSubForm((f) => ({ ...f, url: e.target.value }))
-                      }
-                      placeholder="https://sub.example.com/api/v1/client/subscribe?token=..."
-                      className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 font-mono text-sm text-[var(--hub-ink)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                      自动更新间隔 (小时，0 为关闭)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={subForm.auto_update_hours}
-                      onChange={(e) =>
-                        setSubForm((f) => ({
-                          ...f,
-                          auto_update_hours: Number(e.target.value) || 0,
-                        }))
-                      }
-                      className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 font-mono text-sm text-[var(--hub-ink)]"
-                    />
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <label className="mb-1 block font-medium text-[var(--hub-ink)]">
-                    节点分享链接 (每行一条，支持 vless/vmess/trojan/ss/hy2/socks5/http)
-                  </label>
-                  <textarea
-                    required
-                    rows={5}
-                    value={subForm.raw_content}
-                    onChange={(e) =>
-                      setSubForm((f) => ({ ...f, raw_content: e.target.value }))
-                    }
-                    placeholder="vless://...&#10;trojan://...&#10;socks5://user:pass@1.2.3.4:1080#Home"
-                    className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-2 font-mono text-xs text-[var(--hub-ink)]"
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAddModalOpen(false)}
-                  className="rounded-lg border border-[var(--hub-border)] px-3 py-1.5 font-medium text-[var(--hub-ink)]"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingSub}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-1.5 font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-                >
-                  <Activity className="h-3.5 w-3.5" />
-                  <span>{savingSub ? "解析保存中..." : "保存并解析"}</span>
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

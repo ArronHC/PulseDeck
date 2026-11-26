@@ -47,20 +47,7 @@ export default function GeneralSettings() {
         title={t("settings.general.auto_discovery_key")}
         description={t("settings.general.auto_discovery_key_description")}
         length={24}
-      >
-        <Button
-          variant="soft"
-          color="mint"
-          onClick={() => {
-            window.open(
-              "https://komari-document.pages.dev/install/agent-ad.html",
-              "_blank"
-            );
-          }}
-        >
-          {t("common.help")}
-        </Button>
-      </ApiKeyCard>
+      />
       <SettingCardShortTextInput
         title={t("settings.general.traffic_timezone")}
         description={t("settings.general.traffic_timezone_description")}

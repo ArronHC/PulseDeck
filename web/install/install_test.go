@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/metricstore"
 	"github.com/komari-monitor/komari/database/models"
 	appconfig "github.com/komari-monitor/komari/internal/config"
+	"github.com/komari-monitor/komari/internal/metricstore"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -23,7 +25,7 @@ func setupInstallRouter(t *testing.T) (*gin.Engine, *gorm.DB, *Controller) {
 	if err != nil {
 		t.Fatalf("open install database: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &appconfig.ConfigItem{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Session{}, &appconfig.ConfigItem{}); err != nil {
 		t.Fatalf("migrate install database: %v", err)
 	}
 	sqlDB, err := db.DB()
@@ -80,12 +82,14 @@ func TestInstallRejectsWeakPasswordWithoutCreatingAccount(t *testing.T) {
 func TestInstallCompletesAndPersistsSettings(t *testing.T) {
 	r, db, _ := setupInstallRouter(t)
 	metricDSN := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "metrics.db")) + "?mode=rwc"
-	response := performJSON(r, http.MethodPost, APIPath+"/complete", completeRequest{
+	response := performJSON(r, http.MethodPost, "https://pulsedeck.test"+APIPath+"/complete", completeRequest{
 		Username:    "owner",
 		Password:    "Correct-horse-battery-staple1",
 		Sitename:    "My Komari",
 		Description: "Private monitoring",
 		MetricDSN:   metricDSN,
+		PrivateSite: true,
+		Language:    "zh-CN",
 	})
 	if response.Code != http.StatusOK {
 		t.Fatalf("complete install status = %d: %s", response.Code, response.Body.String())
@@ -97,6 +101,8 @@ func TestInstallCompletesAndPersistsSettings(t *testing.T) {
 	want := map[string]any{
 		appconfig.SitenameKey:         "My Komari",
 		appconfig.DescriptionKey:      "Private monitoring",
+		appconfig.EulaAcceptedKey:     true,
+		appconfig.PrivateSiteKey:      true,
 		metricstore.MetricDBDriverKey: "sqlite",
 		metricstore.MetricDBDSNKey:    metricDSN,
 	}
@@ -110,11 +116,117 @@ func TestInstallCompletesAndPersistsSettings(t *testing.T) {
 		}
 	}
 
+	cookies := map[string]*http.Cookie{}
+	for _, cookie := range response.Result().Cookies() {
+		cookies[cookie.Name] = cookie
+	}
+	sessionCookie := cookies["session_token"]
+	if sessionCookie == nil || sessionCookie.Value == "" || !sessionCookie.HttpOnly || !sessionCookie.Secure ||
+		sessionCookie.SameSite != http.SameSiteLaxMode || sessionCookie.Path != "/" || sessionCookie.MaxAge != 2592000 {
+		t.Fatalf("interactive completion sent an invalid session cookie: %#v", sessionCookie)
+	}
+	languageCookie := cookies["language"]
+	if languageCookie == nil || languageCookie.Value != "zh-CN" || languageCookie.Path != "/" {
+		t.Fatalf("interactive completion sent an invalid language cookie: %#v", languageCookie)
+	}
+	var session models.Session
+	if err := db.First(&session, "session = ?", sessionCookie.Value).Error; err != nil {
+		t.Fatalf("find installed admin session: %v", err)
+	}
+	if session.UUID != user.UUID || !session.Expires.After(time.Now()) {
+		t.Fatalf("session is not active for the installed admin")
+	}
+
 	repeat := performJSON(r, http.MethodPost, APIPath+"/complete", completeRequest{
 		Username: "other", Password: "Another-password1", Sitename: "Other", MetricDSN: "./data/metrics.db",
 	})
 	if repeat.Code != http.StatusConflict {
 		t.Fatalf("repeat install status = %d, want %d", repeat.Code, http.StatusConflict)
+	}
+}
+
+func TestInstallRollsBackWhenSessionCannotBeSaved(t *testing.T) {
+	r, db, _ := setupInstallRouter(t)
+	if err := db.Migrator().DropTable(&models.Session{}); err != nil {
+		t.Fatalf("drop sessions table: %v", err)
+	}
+	body := map[string]string{
+		"username": "owner", "password": "Strong-password1", "sitename": "PulseDeck",
+		"metric_dsn": filepath.Join(t.TempDir(), "metrics.db"),
+	}
+	response := performJSON(r, http.MethodPost, APIPath+"/complete", body)
+	if response.Code != http.StatusInternalServerError || len(response.Result().Cookies()) != 0 {
+		t.Fatalf("complete with failed session = %d, want 500 with no cookies", response.Code)
+	}
+	var count int64
+	if err := db.Model(&models.User{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("failed install left users: count=%d err=%v", count, err)
+	}
+	settings, err := appconfig.GetAll()
+	if err != nil || len(settings) != 0 {
+		t.Fatalf("failed install left settings: %v", err)
+	}
+	if err := db.AutoMigrate(&models.Session{}); err != nil {
+		t.Fatalf("recreate sessions table: %v", err)
+	}
+	response = performJSON(r, http.MethodPost, APIPath+"/complete", body)
+	if response.Code != http.StatusOK {
+		t.Fatalf("retried completion = %d, want 200: %s", response.Code, response.Body.String())
+	}
+	private, err := appconfig.GetAs[bool](appconfig.PrivateSiteKey)
+	if err != nil || private {
+		t.Fatalf("private_site with omitted option = %t, %v", private, err)
+	}
+}
+
+func TestInstallStatusDefaultsAndTestDB(t *testing.T) {
+	r, db, controller := setupInstallRouter(t)
+	response := performJSON(r, http.MethodGet, APIPath+"/status", nil)
+	var status struct {
+		Status string `json:"status"`
+		Data   Status `json:"data"`
+	}
+	want := Status{
+		State: "ready", Required: true, DefaultSitename: "PulseDeck",
+		DefaultDescription: "All-in-one self-hosted server probe, uptime, and node observability deck.",
+		DefaultMetricDSN:   "./data/metrics.db",
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil || status.Status != "success" || status.Data != want || response.Code != http.StatusOK {
+		t.Fatalf("install status = %d %s", response.Code, response.Body.String())
+	}
+
+	metricDSN := filepath.Join(t.TempDir(), "metrics.db")
+	response = performJSON(r, http.MethodPost, APIPath+"/test-db", map[string]string{"metric_dsn": metricDSN})
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			OK      bool   `json:"ok"`
+			Driver  string `json:"driver"`
+			Message string `json:"message"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || result.Status != "success" ||
+		!result.Data.OK || result.Data.Driver != "sqlite" || result.Data.Message != "Connection succeeded" || response.Code != http.StatusOK {
+		t.Fatalf("valid test-db = %d %s", response.Code, response.Body.String())
+	}
+	for _, invalidDSN := range []string{"", "invalid-dsn", "file:" + filepath.Join(t.TempDir(), "missing.db") + "?mode=ro"} {
+		response = performJSON(r, http.MethodPost, APIPath+"/test-db", map[string]string{"metric_dsn": invalidDSN})
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"status":"error"`) {
+			t.Fatalf("test-db with DSN %q = %d %s, want 400", invalidDSN, response.Code, response.Body.String())
+		}
+	}
+	var users int64
+	if err := db.Model(&models.User{}).Count(&users).Error; err != nil || users != 0 {
+		t.Fatalf("connection test created users: count=%d err=%v", users, err)
+	}
+	if settings, err := appconfig.GetAll(); err != nil || len(settings) != 0 {
+		t.Fatalf("connection test persisted settings: %v", err)
+	}
+
+	controller.Deactivate()
+	response = performJSON(r, http.MethodPost, APIPath+"/test-db", map[string]string{"metric_dsn": metricDSN})
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("inactive test-db = %d, want 404", response.Code)
 	}
 }
 
@@ -165,6 +277,7 @@ func TestCompleteFromEnvSucceedsWithDefaults(t *testing.T) {
 	t.Setenv(EnvSiteName, "")
 	t.Setenv(EnvDescription, "")
 	t.Setenv(EnvMetricDSN, metricDSN)
+	t.Setenv(EnvPrivateSite, "")
 
 	done, err := CompleteFromEnv(context.Background(), db)
 	if err != nil || !done {
@@ -184,5 +297,23 @@ func TestCompleteFromEnvSucceedsWithDefaults(t *testing.T) {
 	}
 	if got[metricstore.MetricDBDSNKey] != metricDSN {
 		t.Errorf("metric_dsn = %#v, want %q", got[metricstore.MetricDBDSNKey], metricDSN)
+	}
+	if got[appconfig.EulaAcceptedKey] != true || got[appconfig.PrivateSiteKey] != false {
+		t.Fatalf("headless install acceptance or visibility settings have incorrect defaults")
+	}
+}
+
+func TestCompleteFromEnvCanEnablePrivateSite(t *testing.T) {
+	_, db, _ := setupInstallRouter(t)
+	t.Setenv(EnvAdminUser, "opsadmin")
+	t.Setenv(EnvAdminPass, "StrongPass123!")
+	t.Setenv(EnvMetricDSN, filepath.Join(t.TempDir(), "metrics.db"))
+	t.Setenv(EnvPrivateSite, "true")
+	if done, err := CompleteFromEnv(context.Background(), db); err != nil || !done {
+		t.Fatalf("CompleteFromEnv(private) = (%v, %v), want (true, nil)", done, err)
+	}
+	private, err := appconfig.GetAs[bool](appconfig.PrivateSiteKey)
+	if err != nil || !private {
+		t.Fatalf("private_site from environment = %t, %v", private, err)
 	}
 }

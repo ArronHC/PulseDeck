@@ -47,7 +47,8 @@ func TestAdminRoutesAreRegistered(t *testing.T) {
 		{http.MethodPost, "/api/admin/client/:uuid/edit"},
 		{http.MethodPost, "/api/admin/client/:uuid/remove"},
 		{http.MethodGet, "/api/admin/client/:uuid/token"},
-		{http.MethodGet, "/api/admin/client/:uuid/terminal"},
+		{http.MethodGet, "/api/admin/onboarding"},
+		{http.MethodPost, "/api/admin/onboarding"},
 		{http.MethodPost, "/api/admin/task/exec"},
 		{http.MethodGet, "/api/admin/task/all"},
 		{http.MethodPost, "/api/admin/plugin/enabled"},
@@ -182,5 +183,37 @@ func TestPingIsUnauthenticated(t *testing.T) {
 	}
 	if body := recorder.Body.String(); body != "pong" {
 		t.Fatalf("GET /ping body = %q, want pong", body)
+	}
+}
+
+func TestAdminRedirectsToOverview(t *testing.T) {
+	engine := buildTestEngine(t)
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	if response.Code != http.StatusFound || response.Header().Get("Location") != "/admin/overview" {
+		t.Fatalf("GET /admin = %d redirect to %q, want 302 /admin/overview", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestRemovedEndpointsAreUnregistered(t *testing.T) {
+	engine := buildTestEngine(t)
+	for _, route := range engine.Routes() {
+		switch {
+		case strings.HasPrefix(route.Path, "/api/admin/theme"),
+			strings.HasPrefix(route.Path, "/themes/"),
+			strings.HasPrefix(route.Path, "/probe-theme"),
+			strings.HasPrefix(route.Path, "/api/preview/client/"),
+			strings.HasPrefix(route.Path, "/api/clients/transfer/"),
+			strings.HasPrefix(route.Path, "/api/clients/terminal"),
+			strings.HasPrefix(route.Path, "/api/admin/client/") && (strings.HasSuffix(route.Path, "/terminal") || strings.Contains(route.Path, "/file/")):
+			t.Errorf("removed route %s %s is still registered", route.Method, route.Path)
+		}
+	}
+	for _, path := range []string{"/api/admin/theme/list", "/api/clients/terminal", "/api/admin/client/example/file/download"} {
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, response.Code)
+		}
 	}
 }

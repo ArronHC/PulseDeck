@@ -3,8 +3,7 @@ package models
 // Plugin is the manifest of an installed plugin (komari-plugin.json).
 //
 // Name, Description and Author accept either a plain string or an i18n map
-// like {"zh_CN": "...", "en": "..."}, mirroring the theme manifest. The
-// backend passes the value through and the frontend resolves it against the
+// like {"zh_CN": "...", "en": "..."}. The backend passes the value through and the frontend resolves it against the
 // current locale.
 type Plugin struct {
 	Name          any               `json:"name"`
@@ -17,7 +16,7 @@ type Plugin struct {
 	Komari        string            `json:"komari"` // supported server version constraint, e.g. ">=0.0.1"
 	Entry         string            `json:"entry"`  // entry script, defaults to "script.js"
 	Permissions   PluginPermissions `json:"permissions"`
-	Configuration Configuration     `json:"configuration"`   // declared config items, same shape as themes
+	Configuration Configuration     `json:"configuration"`   // declared config items
 	Pages         []PluginPage      `json:"pages,omitempty"` // injected admin pages
 }
 
@@ -50,7 +49,7 @@ const (
 	// PageVisibilityAdmin limits the page to the admin sidebar.
 	PageVisibilityAdmin PageVisibility = "admin"
 	// PageVisibilityPublic serves the page through the public route without
-	// navigation, mirroring the theme public behavior.
+	// navigation.
 	PageVisibilityPublic PageVisibility = "public"
 )
 
@@ -60,8 +59,7 @@ type PageType string
 const (
 	// PageTypeIframe embeds a static file from the plugin directory.
 	PageTypeIframe PageType = "iframe"
-	// PageTypeRedirect navigates to an internal site path, mirroring the
-	// theme redirect configuration. The URL must stay on the same origin.
+	// PageTypeRedirect navigates to an internal site path. The URL must stay on the same origin.
 	PageTypeRedirect PageType = "redirect"
 )
 
@@ -78,8 +76,7 @@ type PluginPage struct {
 	Visibility PageVisibility `json:"visibility,omitempty"`
 }
 
-// PluginConfiguration stores the saved configuration values of one plugin,
-// mirroring ThemeConfiguration.
+// PluginConfiguration stores the saved configuration values of one plugin.
 type PluginConfiguration struct {
 	Short string `json:"short" gorm:"primaryKey;unique;not null"`
 	Data  string `json:"data" gorm:"type:longtext" default:"{}"`

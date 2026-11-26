@@ -7,9 +7,6 @@ import { MOTION_DURATION, MOTION_EASE, MOTION_SPRING } from "@/lib/motion";
 import { Skeletonize, skeletonText } from "./ui/skeleton";
 
 const Footer = () => {
-  //const currentYear = new Date().getFullYear();
-
-  // 格式化 build 时间
   const formatBuildTime = (isoString: string) => {
     const date = new Date(isoString);
     return (
@@ -35,7 +32,7 @@ const Footer = () => {
   const { call } = useRPC2Call();
   const { publicInfo } = usePublicInfo();
   const customFooterHtml = publicInfo?.theme_settings?.customFooterHtml || "";
-  // 页脚内容与 main 同宽、同左右安全边距，左边缘和页面内容对齐（边框仍铺满整行）
+
   const innerStyle: CSSProperties = {
     maxWidth: "1440px",
     width: "100%",
@@ -46,7 +43,6 @@ const Footer = () => {
   useEffect(() => {
     const fetchVersionInfo = async () => {
       try {
-        //const response = await fetch('/api/version');
         const data = await call("common:getVersion");
         setVersionInfo({ hash: data.hash?.slice(0, 7), version: data.version });
       } catch (error) {
@@ -55,13 +51,12 @@ const Footer = () => {
       }
     };
 
-    fetchVersionInfo();
-  }, []);
+    void fetchVersionInfo();
+  }, [call]);
 
   return (
     <motion.div
-      className="km-footer footer py-km-block border-t-1 border-t-[var(--gray-7)]"
-      // surface 层：页脚是页面的一部分，随页面一起轻轻落位
+      className="km-footer footer py-km-block border-t border-[var(--hub-border)]"
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
@@ -69,8 +64,6 @@ const Footer = () => {
         opacity: { duration: MOTION_DURATION.base, ease: MOTION_EASE.out },
       }}
     >
-      {/* Copyright and ICP Filing */}
-
       {customFooterHtml ? (
         <Text
           size="1"
@@ -82,35 +75,30 @@ const Footer = () => {
             dangerouslySetInnerHTML={{
               __html: customFooterHtml,
             }}
-          ></span>
+          />
           <Text size="2" color="gray">
-            Powered by PulseDeck · Based on Komari.
+            Powered by PulseDeck
           </Text>
         </Text>
       ) : (
         <Flex
           direction={{ initial: "column", md: "row" }}
           justify="between"
-          align={{ initial: "center", md: "start" }}
-          gap="4"
+          align={{ initial: "center", md: "center" }}
+          gap="3"
           className={innerClass}
           style={innerStyle}
         >
-          <Flex
-            direction="column"
-            gap="1"
-            align={{ initial: "center", md: "start" }}
-          >
-            <Text size="2" color="gray">
-              Powered by PulseDeck · Based on Komari.
-            </Text>
+          <Text size="2" color="gray">
+            Powered by PulseDeck · Unified Observability Deck
+          </Text>
+          <Flex align="center" gap="3" wrap="wrap">
             {buildTime && (
-              <Text size="1" color="gray">
-                Build Time: {formatBuildTime(buildTime)}
+              <Text size="1" color="gray" className="font-mono">
+                Build {formatBuildTime(buildTime)}
               </Text>
             )}
-            <Text size="1" color="gray">
-              {/* 版本号异步到达：先是一条与「1.2.3 (abcdef0)」等宽的小骨架，到达后原位淡入 */}
+            <Text size="1" color="gray" className="font-mono">
               <Skeletonize as="span" loading={!versionInfo && !versionFailed}>
                 {versionInfo
                   ? `${versionInfo.version} (${versionInfo.hash})`

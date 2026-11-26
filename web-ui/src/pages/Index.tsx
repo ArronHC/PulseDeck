@@ -8,14 +8,24 @@ import {
 } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import React, { useCallback, useEffect, useMemo, Suspense } from "react";
+import { Link } from "react-router-dom";
 const loadNodeDisplay = () => import("../components/NodeDisplay");
 const NodeDisplay = React.lazy(loadNodeDisplay);
 void loadNodeDisplay();
 import { formatBytes, formatSpeed } from "@/utils/unitHelper";
 import { useLiveData, useLiveDataMeta } from "../contexts/LiveDataContext";
 import { useNodeList } from "@/contexts/NodeListContext";
+import { AccountProvider, useAccount } from "@/contexts/AccountContext";
 import Loading from "@/components/loading";
-import { Activity, Globe, HardDriveUpload, Server, Settings } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Globe,
+  HardDriveUpload,
+  LogIn,
+  Server,
+  Settings,
+} from "lucide-react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import type { LiveData } from "@/types/LiveData";
 import { AnimatePresence, motion } from "motion/react";
@@ -28,11 +38,8 @@ import {
 import { useKmReducedMotion } from "@/components/motion/MotionProvider";
 import { AnimatedNumber, Collapse } from "@/components/motion";
 import { Skeletonize, skeletonText } from "@/components/ui/skeleton";
-import { usePublicInfo } from "@/contexts/PublicInfoContext";
-import {
-  ProbeThemeSandboxView,
-  ProbeThemeToolbar,
-} from "@/components/hub/ProbeThemeHost";
+import { HubEmptyState } from "@/components/hub/HubUi";
+import { loginPath } from "@/utils/loginRedirect";
 
 const EMPTY_LIVE_DATA: LiveData = { online: [], data: {} };
 
@@ -48,16 +55,17 @@ type StatusCardKey = keyof typeof STATUS_CARD_VISIBILITY_DEFAULTS;
 const ERROR_LINGER_MS = 1500;
 
 const Index = () => {
-  const { publicInfo } = usePublicInfo();
-  const activeTheme = publicInfo?.theme || "default";
-  if (activeTheme !== "default") {
-    return <ProbeThemeSandboxView themeShort={activeTheme} />;
-  }
-  return <DefaultProbeView />;
+  return (
+    <AccountProvider>
+      <DefaultProbeView />
+    </AccountProvider>
+  );
 };
 
 const DefaultProbeView = () => {
   const [t] = useTranslation();
+  const { account } = useAccount();
+  const isAdmin = Boolean(account?.logged_in);
   const { live_data, showCallout } = useLiveData();
   const { nodeList, isLoading, error, refresh } = useNodeList();
   const listLoading = isLoading && !nodeList;
@@ -211,6 +219,8 @@ const DefaultProbeView = () => {
     };
   }, [refresh]);
 
+  const isEmpty = !listLoading && (nodeList?.length ?? 0) === 0;
+
   return (
     <div className="space-y-6">
       <Callouts />
@@ -227,7 +237,15 @@ const DefaultProbeView = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <ProbeThemeToolbar compact />
+          {isAdmin && (
+            <Link
+              to="/admin/servers"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline transition-colors hover:bg-[var(--hub-canvas)]"
+            >
+              <span>管理服务器</span>
+              <ArrowRight className="h-3.5 w-3.5 text-[var(--hub-muted)]" />
+            </Link>
+          )}
           <Popover.Root>
             <Popover.Trigger>
               <IconButton
@@ -285,21 +303,52 @@ const DefaultProbeView = () => {
         </Callout.Root>
       </Collapse>
 
-      <Suspense
-        fallback={
-          <div className="mt-4">
-            <Loading reveal={false} />
-          </div>
-        }
-      >
-        <NodeDisplay
-          nodes={nodeList ?? []}
-          liveData={liveData}
-          onlineSet={onlineSet}
-          loading={listLoading}
-          liveLoading={liveLoading}
+      {isEmpty ? (
+        <HubEmptyState
+          icon={Server}
+          title="暂无服务器探针节点"
+          description={
+            isAdmin
+              ? "当前尚未接入任何服务器节点，前往管理后台添加探针或启用自动发现批量接入。"
+              : "管理员尚未接入服务器探针节点，登录后可在控制台添加节点。"
+          }
+          action={
+            isAdmin ? (
+              <Link
+                to="/admin/servers"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-xs font-medium text-white no-underline hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              >
+                <span>前往控制台添加节点</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : (
+              <Link
+                to={loginPath("/admin/servers")}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-3 text-xs font-medium text-[var(--hub-ink)] no-underline hover:bg-[var(--hub-canvas)]"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                <span>管理员登录</span>
+              </Link>
+            )
+          }
         />
-      </Suspense>
+      ) : (
+        <Suspense
+          fallback={
+            <div className="mt-4">
+              <Loading reveal={false} />
+            </div>
+          }
+        >
+          <NodeDisplay
+            nodes={nodeList ?? []}
+            liveData={liveData}
+            onlineSet={onlineSet}
+            loading={listLoading}
+            liveLoading={liveLoading}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

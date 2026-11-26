@@ -17,17 +17,19 @@ docker compose up -d
 
 - 默认拉取镜像：`ghcr.io/arronhc/pulsedeck:latest`（可通过 `PULSEDECK_IMAGE=ghcr.io/arronhc/pulsedeck:snapshot` 切换快照版）
 - 默认监听端口：`25774`（可通过 `KOMARI_PORT=8080 docker compose up -d` 自定义）
-- 数据持久化目录：`./data` 挂载到容器 `/app/data`（保存 SQLite 主库与指标库、Uptime 记录、订阅节点、已安装的 Komari 主题商城主题与自定义 favicon）
+- 数据持久化目录：`./data` 挂载到容器 `/app/data`（保存 SQLite 主库与指标库、Uptime 记录、订阅节点、已安装的插件与自定义 favicon）
 
 ### 零交互自动初始化（可选）
 
-首次启动空库时默认进入 Web 安装向导；如需自动化部署（跳过安装向导），在 `docker-compose.yml` 的 `environment` 中同时设置管理员账号与强密码（至少 8 位且包含大小写字母与数字）即可：
+首次启动空库时默认进入 5 步交互式 Web 安装向导（支持在线测试数据库连接，完成后自动登录进入控制台新手引导）；如需自动化部署（跳过安装向导），在 `docker-compose.yml` 的 `environment` 中同时设置管理员账号与强密码（至少 8 位且包含大小写字母与数字）即可：
 
 ```yaml
 environment:
   PULSEDECK_ADMIN_USER: admin
   PULSEDECK_ADMIN_PASS: ChangeMe123!
   PULSEDECK_SITENAME: PulseDeck
+  # 可选，设为 true 启用私有站点（需登录后浏览）
+  # PULSEDECK_PRIVATE_SITE: "false"
   # 可选，默认使用本地 SQLite：./data/metrics.db
   # PULSEDECK_METRIC_DSN: ./data/metrics.db
 ```

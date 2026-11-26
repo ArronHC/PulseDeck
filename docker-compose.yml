@@ -14,6 +14,7 @@ services:
       # PULSEDECK_ADMIN_USER: admin
       # PULSEDECK_ADMIN_PASS: ChangeMe123!
       # PULSEDECK_SITENAME: PulseDeck
+      # PULSEDECK_PRIVATE_SITE: "false"
     volumes:
       - ./data:/app/data
       # Optional: mount a host mihomo or sing-box binary for encrypted-node IPPure checks
