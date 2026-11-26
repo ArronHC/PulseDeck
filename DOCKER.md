@@ -1,100 +1,92 @@
 # PulseDeck Docker 部署指南
 
-PulseDeck 默认推荐直接拉取 **预构建双架构镜像（`linux/amd64`、`linux/arm64`）**，在 512MB 小内存 VPS 或 NAS 上也能 10 秒拉起，**无需在目标机现场编译前端或 Go**。同时提供多阶段源码构建方式按需选用。
+PulseDeck 提供 **Full（默认）** 与 **Lite** 两种预构建双架构镜像（`linux/amd64`、`linux/arm64`），10 秒即可拉起，无需目标机现场编译：
+
+| 镜像标签 | 说明 | 适用场景 |
+| :--- | :--- | :--- |
+| `ghcr.io/arronhc/pulsedeck:latest`（同 `:full`） | **完整版（推荐，开箱即用）**：内置 `mihomo` 代理核心 | 直接支持加密节点真实代理延迟、下载测速与节点 IPPure 纯净度检测 |
+| `ghcr.io/arronhc/pulsedeck:lite` | **精简版**：不含内置代理核心 | 仅用探针/Uptime/浏览器本机测速，或自行挂载宿主机 `mihomo`/`sing-box` |
+| `ghcr.io/arronhc/pulsedeck:snapshot` / `:snapshot-lite` | 主干最新快照版（Full / Lite） | 抢先体验最新特性 |
 
 ---
 
-## 1. Docker Compose 预构建镜像一键部署（推荐）
-
-> 若当前 GitHub 仓库设为私有，拉取 GHCR 镜像前需先登录一次：
-> ```bash
-> echo "$GITHUB_PAT" | docker login ghcr.io -u <你的GitHub用户名> --password-stdin
-> ```
+## 1. Docker Compose 一键部署（推荐）
 
 ```bash
 docker compose up -d
 ```
 
-- 默认拉取镜像：`ghcr.io/arronhc/pulsedeck:latest`（可通过 `PULSEDECK_IMAGE=ghcr.io/arronhc/pulsedeck:snapshot` 切换快照版）
-- 默认监听端口：`25774`（可通过 `KOMARI_PORT=8080 docker compose up -d` 自定义）
-- 数据持久化目录：`./data` 挂载到容器 `/app/data`（保存 SQLite 主库与指标库、Uptime 记录、订阅节点、已安装的插件与自定义 favicon）
+- 默认拉取 `ghcr.io/arronhc/pulsedeck:latest`（Full 版）。如需精简版，使用 `PULSEDECK_IMAGE=ghcr.io/arronhc/pulsedeck:lite docker compose up -d`。
+- 默认监听端口：`25774`（可通过 `KOMARI_PORT=8080 docker compose up -d` 修改）。
+- 数据持久化目录：`./data` 挂载到容器 `/app/data`（保存 SQLite 主库与指标库、Uptime 记录、订阅节点与自定义 `favicon.ico`）。
 
 ### 零交互自动初始化（可选）
 
-首次启动空库时默认进入 5 步交互式 Web 安装向导（支持在线测试数据库连接，完成后自动登录进入控制台新手引导）；如需自动化部署（跳过安装向导），在 `docker-compose.yml` 的 `environment` 中同时设置管理员账号与强密码（至少 8 位且包含大小写字母与数字）即可：
+首次启动空库时默认进入 5 步交互式 Web 安装向导；如需自动化部署，在 `docker-compose.yml` 的 `environment` 中同时配置管理员账号与强密码（至少 8 位且包含大小写字母与数字）即可：
 
 ```yaml
 environment:
   PULSEDECK_ADMIN_USER: admin
   PULSEDECK_ADMIN_PASS: ChangeMe123!
   PULSEDECK_SITENAME: PulseDeck
-  # 可选，设为 true 启用私有站点（需登录后浏览）
   # PULSEDECK_PRIVATE_SITE: "false"
-  # 可选，默认使用本地 SQLite：./data/metrics.db
   # PULSEDECK_METRIC_DSN: ./data/metrics.db
 ```
 
 ---
 
-## 2. 直接使用 `docker run`
+## 2. 一键启动虚拟数据公开演示站（Demo）
+
+PulseDeck 内置 `PULSEDECK_DEMO=true` 虚拟数据种子模式（使用 RFC 5737 保留网段与 `demo.example.com` 虚拟节点，零真实隐私数据）：
 
 ```bash
-docker run -d \
-  --name pulsedeck \
-  --restart unless-stopped \
-  -p 25774:25774 \
-  -e TZ=Asia/Shanghai \
-  -e PULSEDECK_ADMIN_USER=admin \
-  -e PULSEDECK_ADMIN_PASS='ChangeMe123!' \
-  -v "$(pwd)/data:/app/data" \
-  ghcr.io/arronhc/pulsedeck:latest
+docker compose -f docker-compose.demo.yml up -d
 ```
 
 ---
 
-## 3. 从本地源码自行构建镜像（适合二次开发 / 定制代理核心）
+## 3. 从 Komari 迁移至 PulseDeck
+
+PulseDeck 兼容上游 Komari 主库与指标库迁移，支持以下两种无损迁移方式：
+
+1. **方式一：Web 备份包恢复（推荐）**
+   - 在原 Komari 后台下载备份压缩包（`backup.zip`，内含 `komari-backup-markup` 与数据库文件）。
+   - 部署全新 PulseDeck 后，在首次安装向导（`/install`）的「备份恢复」步骤直接上传该 `.zip` 即可自动重启并完成表结构迁移（PulseDeck 会自动兼容并忽略不再使用的旧插件/主题目录）。
+2. **方式二：直接挂载原 Komari `./data` 目录**
+   - 停止原 Komari 容器，保留 `./data`（含 `komari.db`、`metrics.db` 等），将其挂载到 PulseDeck 容器 `/app/data`。
+   - PulseDeck 启动时会自动执行增量表结构与指标存储迁移，原有探针节点、历史指标、Ping 任务与通知配置均可保留使用。
+
+---
+
+## 4. 从本地源码自行构建镜像
 
 源码构建会在本机执行 Node 22 + Go 1.25 + GCC（SQLite CGO）编译，建议在内存 >= 2GB 的机器或 CI 环境运行：
 
 ```bash
-# 使用 Compose 源码构建覆盖文件
+# 默认构建 Full 版（内嵌 mihomo）
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
-# 或直接 docker build
-docker build -t pulsedeck:local .
+# 构建 Lite 精简版（不安装代理核心）
+INSTALL_PROXY_CORE=none docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
+# 或构建内嵌 sing-box 版
+INSTALL_PROXY_CORE=sing-box docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-### 可选：启用容器内加密节点 IPPure 出口纯净度检测
+若运行 `:lite` 镜像时临时需要节点代理测速/纯净度检测，也可在 `docker-compose.yml` 的 `volumes` 中只读挂载宿主机二进制：
 
-对 `VMess / VLESS / Trojan / Shadowsocks / Hysteria2` 等加密代理节点执行 `https://my.ippure.com/v1/info` 出口检测，可选以下任一方式：
-
-1. **构建时内嵌 `sing-box`（Alpine `edge/community`）或 `mihomo`（固定版本 Release）**：
-   ```bash
-   # 内嵌 sing-box
-   INSTALL_PROXY_CORE=sing-box docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-
-   # 或内嵌 mihomo
-   INSTALL_PROXY_CORE=mihomo docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-   ```
-2. **使用预构建精简镜像 + 运行时挂载宿主机 `mihomo` / `sing-box` 二进制**（推荐，零重编译）：
-   在 `docker-compose.yml` 的 `volumes` 下取消挂载注释：
-   ```yaml
-   volumes:
-     - ./data:/app/data
-     - /usr/local/bin/mihomo:/usr/local/bin/mihomo:ro
-   ```
+```yaml
+volumes:
+  - ./data:/app/data
+  - /usr/local/bin/mihomo:/usr/local/bin/mihomo:ro
+```
 
 ---
 
-## 4. 常用维护命令
+## 5. 常用维护命令
 
 ```bash
-# 查看日志
 docker compose logs -f
-
-# 更新到最新预构建镜像
 docker compose pull && docker compose up -d
-
-# 停止服务
 docker compose down
 ```

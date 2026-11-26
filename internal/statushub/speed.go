@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +26,84 @@ type SpeedInput struct {
 	TestFilter
 	Mode        string `json:"mode"`
 	Concurrency int    `json:"concurrency"`
+}
+
+type SpeedReportItem struct {
+	NodeID       uint    `json:"node_id"`
+	LatencyMS    int64   `json:"latency_ms"`
+	DownloadMbps float64 `json:"download_mbps"`
+	TestStatus   string  `json:"test_status"`
+	TestMethod   string  `json:"test_method"`
+	TestMessage  string  `json:"test_message"`
+}
+
+func (s *Service) SaveSpeedResults(ctx context.Context, items []SpeedReportItem) ([]Node, error) {
+	if len(items) == 0 || len(items) > 1000 {
+		return nil, InputError("provide 1–1000 speed results")
+	}
+	seen := make(map[uint]bool, len(items))
+	for _, item := range items {
+		switch item.TestMethod {
+		case "", "browser_http", "browser_tcp", "tcp", "proxy_http", "proxy_download", "tcp_fallback":
+		default:
+			return nil, InputError("invalid test_method")
+		}
+		switch item.TestStatus {
+		case "ok":
+			if item.LatencyMS < 0 || item.DownloadMbps < 0 || math.IsNaN(item.DownloadMbps) || math.IsInf(item.DownloadMbps, 0) {
+				return nil, InputError("invalid speed test measurements")
+			}
+		case "error", "timeout", "untested":
+		default:
+			return nil, InputError("test_status must be ok, error, timeout, or untested")
+		}
+		if item.NodeID == 0 || seen[item.NodeID] {
+			return nil, InputError("speed results must specify unique node IDs")
+		}
+		seen[item.NodeID] = true
+		unlock, err := s.lock("node-test", item.NodeID)
+		if err != nil {
+			return nil, err
+		}
+		defer unlock()
+	}
+	now := s.now()
+	out := make([]Node, 0, len(items))
+	err := s.dbFor(ctx).Transaction(func(tx *gorm.DB) error {
+		var sources []models.SubSource
+		if err := tx.Select("id", "name").Find(&sources).Error; err != nil {
+			return err
+		}
+		names := (subscriptionData{sources: sources}).names()
+		for _, item := range items {
+			var node models.SubNode
+			if err := tx.First(&node, item.NodeID).Error; err != nil {
+				return err
+			}
+			result := speedResult{
+				latency: item.LatencyMS, download: item.DownloadMbps, status: item.TestStatus,
+				method: item.TestMethod, message: strings.TrimSpace(item.TestMessage),
+			}
+			if result.status == "ok" && result.method == "" {
+				result.method = "browser_http"
+			}
+			switch result.status {
+			case "error", "timeout":
+				result.latency, result.download = -1, 0
+			case "untested":
+				result.latency, result.download = 0, 0
+			}
+			if err := saveSpeedResult(tx, &node, result, now); err != nil {
+				return err
+			}
+			out = append(out, NodeView(node, names[node.SubscriptionID]))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (s *Service) testNodes(ctx context.Context, filter TestFilter, concurrency int, test func(context.Context, *models.SubNode) error) ([]Node, error) {
@@ -106,6 +186,7 @@ type speedResult struct {
 	latency  int64
 	download float64
 	status   string
+	method   string
 	message  string
 }
 
@@ -123,6 +204,7 @@ func (s *Service) nodeSpeed(ctx context.Context, node *models.SubNode, mode stri
 			result = s.httpSpeed(perCheck, client, mode)
 		case errors.Is(err, errProxyCore):
 			result = tcpSpeed(perCheck, *node)
+			result.method = "tcp_fallback"
 			result.message = "TCP fallback: " + errProxyCore.Error() + ". " + result.message
 		default:
 			var input InputError
@@ -130,7 +212,7 @@ func (s *Service) nodeSpeed(ctx context.Context, node *models.SubNode, mode stri
 			if errors.As(err, &input) {
 				message = input.Error()
 			}
-			result = speedFailure(message, err)
+			result = speedFailure(proxySpeedMethod(mode), message, err)
 		}
 	}
 	if ctx.Err() != nil {
@@ -141,16 +223,21 @@ func (s *Service) nodeSpeed(ctx context.Context, node *models.SubNode, mode stri
 		if err := currentNode(tx, node); err != nil {
 			return err
 		}
-		node.LatencyMS, node.DownloadMbps, node.TestStatus, node.TestMessage = result.latency, result.download, result.status, result.message
-		node.TestedAt = &now
-		if err := tx.Model(node).Select("LatencyMS", "DownloadMbps", "TestStatus", "TestMessage", "TestedAt").Updates(node).Error; err != nil {
-			return err
-		}
-		if result.status == "ok" {
-			return tx.Create(&models.SubSpeedSample{NodeID: node.ID, LatencyMS: result.latency, TestedAt: now}).Error
-		}
-		return nil
+		return saveSpeedResult(tx, node, result, now)
 	})
+}
+
+func saveSpeedResult(tx *gorm.DB, node *models.SubNode, result speedResult, now time.Time) error {
+	node.LatencyMS, node.DownloadMbps = result.latency, result.download
+	node.TestStatus, node.TestMethod, node.TestMessage = result.status, result.method, result.message
+	node.TestedAt = &now
+	if err := tx.Model(node).Select("LatencyMS", "DownloadMbps", "TestStatus", "TestMethod", "TestMessage", "TestedAt").Updates(node).Error; err != nil {
+		return err
+	}
+	if result.status == "ok" {
+		return tx.Create(&models.SubSpeedSample{NodeID: node.ID, LatencyMS: result.latency, TestedAt: now}).Error
+	}
+	return nil
 }
 
 func currentNode(tx *gorm.DB, snapshot *models.SubNode) error {
@@ -168,13 +255,13 @@ func currentNode(tx *gorm.DB, snapshot *models.SubNode) error {
 	return nil
 }
 
-func speedFailure(message string, err error) speedResult {
+func speedFailure(method, message string, err error) speedResult {
 	status := "error"
 	var netErr net.Error
 	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout() {
 		status = "timeout"
 	}
-	return speedResult{latency: -1, status: status, message: message}
+	return speedResult{latency: -1, status: status, method: method, message: message}
 }
 
 func tcpSpeed(ctx context.Context, n models.SubNode) speedResult {
@@ -182,41 +269,49 @@ func tcpSpeed(ctx context.Context, n models.SubNode) speedResult {
 	dialer := net.Dialer{Timeout: 5 * time.Second}
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(n.Host, strconv.Itoa(n.Port)))
 	if err != nil {
-		return speedFailure(safeNetworkError(err), err)
+		return speedFailure("tcp", safeNetworkError(err), err)
 	}
 	_ = conn.Close()
-	return speedResult{latency: max(1, time.Since(start).Milliseconds()), status: "ok", message: "TCP connection established"}
+	return speedResult{latency: max(1, time.Since(start).Milliseconds()), status: "ok", method: "tcp", message: "TCP connection established"}
+}
+
+func proxySpeedMethod(mode string) string {
+	if mode == "download" {
+		return "proxy_download"
+	}
+	return "proxy_http"
 }
 
 func (s *Service) httpSpeed(ctx context.Context, client *http.Client, mode string) speedResult {
+	method := proxySpeedMethod(mode)
 	target := s.testURL
 	if mode == "download" {
 		target = s.downloadURL
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return speedFailure("invalid speed test endpoint", err)
+		return speedFailure(method, "invalid speed test endpoint", err)
 	}
 	req.Header.Set("Accept-Encoding", "identity")
 	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		return speedFailure(safeNetworkError(err), err)
+		return speedFailure(method, safeNetworkError(err), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return speedFailure(fmt.Sprintf("speed test endpoint returned HTTP %d", resp.StatusCode), nil)
+		return speedFailure(method, fmt.Sprintf("speed test endpoint returned HTTP %d", resp.StatusCode), nil)
 	}
-	result := speedResult{latency: max(1, time.Since(start).Milliseconds()), status: "ok", message: "HTTP request succeeded"}
+	result := speedResult{latency: max(1, time.Since(start).Milliseconds()), status: "ok", method: method, message: "HTTP request succeeded"}
 	if mode == "download" {
 		bodyStart := time.Now()
 		const downloadSize = 5_000_000
 		n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, downloadSize))
 		if err != nil {
-			return speedFailure(safeNetworkError(err), err)
+			return speedFailure(method, safeNetworkError(err), err)
 		}
 		if n == 0 {
-			return speedFailure("speed test endpoint returned an empty body", nil)
+			return speedFailure(method, "speed test endpoint returned an empty body", nil)
 		}
 		result.download = float64(n) * 8 / max(time.Since(bodyStart).Seconds(), 0.001) / 1_000_000
 		result.message = "download completed"

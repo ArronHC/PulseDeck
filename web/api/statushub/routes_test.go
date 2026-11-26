@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func hubRouter(t *testing.T) *gin.Engine {
+func hubRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "hub.db")), &gorm.Config{})
@@ -40,7 +41,7 @@ func hubRouter(t *testing.T) *gin.Engine {
 		c.Next()
 	})
 	Register(r.Group("/api"), r.Group("/api/admin", api.RequireRole(api.RoleAdmin)), hub.New(db))
-	return r
+	return r, db
 }
 
 func request(r *gin.Engine, method, path, body string, admin bool) *httptest.ResponseRecorder {
@@ -67,56 +68,114 @@ func dataFrom[T any](t *testing.T, res *httptest.ResponseRecorder) T {
 }
 
 func TestPublicSubscriptionEndpointsMaskCredentials(t *testing.T) {
-	r := hubRouter(t)
+	r, db := hubRouter(t)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Query().Get("token") != "provider-secret" || req.URL.Path != "/path-secret" {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		w.Header().Set("Subscription-Userinfo", "upload=12; download=34; total=56; expire=123456")
-		_, _ = io.WriteString(w, "vless://node-uuid@example.org:443#Tokyo\nhttp://proxy-user:proxy-password@gate.example:8888#London")
+		_, _ = io.WriteString(w, "vless://node-uuid@relay.example.org:443#Tokyo\nhttp://proxy-user:proxy-password@gate.example:8888#London\ntrojan://example-secret@198.51.100.84:443")
 	}))
 	defer provider.Close()
 
 	secretURL := strings.Replace(provider.URL, "://", "://provider-user:provider-password@", 1) + "/path-secret?token=provider-secret#fragment-secret"
-	body := fmt.Sprintf(`{"name":"Airport","url":%q}`, secretURL)
+	body := fmt.Sprintf(`{"name":"Airport","url":%q,"auto_speed_hours":168,"auto_purity_hours":720,"expire_alert_days":365}`, secretURL)
 	require.Equal(t, http.StatusUnauthorized, request(r, "POST", "/api/admin/subscriptions", body, false).Code)
 	created := dataFrom[hub.Subscription](t, request(r, "POST", "/api/admin/subscriptions", body, true))
 	require.Positive(t, created.ID)
 	require.Equal(t, secretURL, created.URL)
 	require.Equal(t, provider.URL+"/***?token=***", created.MaskedURL)
-	require.Equal(t, 2, created.NodeCount)
+	require.Equal(t, 3, created.NodeCount)
+	require.Equal(t, 168, created.AutoSpeedHours)
+	require.Equal(t, 720, created.AutoPurityHours)
+	require.Equal(t, 365, created.ExpireAlertDays)
 	require.EqualValues(t, 12, created.Upload)
 	admin := dataFrom[[]hub.Subscription](t, request(r, "GET", "/api/admin/subscriptions", "", true))
 	require.Equal(t, secretURL, admin[0].URL)
+	res := request(r, "GET", "/api/subscriptions/ippure-self", "", false)
+	require.JSONEq(t, `{"status":"success","data":null}`, res.Body.String())
+	var tokyo models.SubNode
+	require.NoError(t, db.First(&tokyo, "name = ?", "Tokyo").Error)
+	tokyo.IPPure = &models.IPPureResult{IP: "192.0.2.42"}
+	require.NoError(t, db.Model(&tokyo).Select("IPPure").Updates(&tokyo).Error)
+	self := models.IPPureSelfCache{ID: 1, Result: models.IPPureResult{IP: "2001:db8::42"}}
+	require.NoError(t, db.Create(&self).Error)
 
 	for _, path := range []string{"/api/subscriptions", "/api/subscriptions/nodes", "/api/subscriptions/map", "/api/overview"} {
 		// Public routes always use sanitized views, including when called by an admin.
 		for _, auth := range []bool{false, true} {
 			res := request(r, "GET", path, "", auth)
 			require.Equal(t, http.StatusOK, res.Code, path)
-			for _, secret := range []string{"provider-secret", "provider-user", "provider-password", "path-secret", "fragment-secret", "node-uuid", "proxy-user", "proxy-password", `"raw_config":`, `"raw_content":`, `"url":`} {
+			for _, secret := range []string{"provider-secret", "provider-user", "provider-password", "path-secret", "fragment-secret", "node-uuid", "proxy-user", "proxy-password", "relay.example.org", "198.51.100.84", "192.0.2.42", `"raw_config":`, `"raw_content":`, `"url":`} {
 				require.NotContains(t, res.Body.String(), secret, path)
 			}
 		}
 	}
-	nodePath := fmt.Sprintf("/api/subscriptions/nodes?subscription_id=%d&country=jp&search=tok&only_enabled=true", created.ID)
-	nodes := dataFrom[[]hub.Node](t, request(r, "GET", nodePath, "", false))
+	query := fmt.Sprintf("?subscription_id=%d&country=jp&search=tok&only_enabled=true", created.ID)
+	for _, auth := range []bool{false, true} {
+		nodes := dataFrom[[]hub.Node](t, request(r, "GET", "/api/subscriptions/nodes"+query, "", auth))
+		require.Len(t, nodes, 1)
+		require.Equal(t, "***.example.org", nodes[0].Host)
+		require.Equal(t, 443, nodes[0].Port)
+		require.Equal(t, "vless", nodes[0].Protocol)
+		require.Equal(t, "192.0.*.*", nodes[0].IPPure.IP)
+		require.Empty(t, dataFrom[[]hub.Node](t, request(r, "GET", "/api/subscriptions/nodes?search=relay.example.org", "", auth)))
+		purity := dataFrom[models.IPPureResult](t, request(r, "GET", "/api/subscriptions/ippure-self", "", auth))
+		require.Equal(t, "2001:db8:*:*:*:*:*:*", purity.IP)
+	}
+	adminNodes := "/api/admin/subscriptions/nodes"
+	adminSelf := "/api/admin/subscriptions/ippure-self"
+	for _, path := range []string{adminNodes, adminSelf} {
+		require.Equal(t, http.StatusUnauthorized, request(r, "GET", path, "", false).Code)
+	}
+	nodes := dataFrom[[]hub.Node](t, request(r, "GET", adminNodes+query, "", true))
 	require.Len(t, nodes, 1)
-	require.Equal(t, "example.org", nodes[0].Host)
-	require.Equal(t, 443, nodes[0].Port)
-	require.Equal(t, "vless", nodes[0].Protocol)
-	patchPath := fmt.Sprintf("/api/admin/subscriptions/nodes/%d", nodes[0].ID)
+	require.Equal(t, "relay.example.org", nodes[0].Host)
+	require.Equal(t, "192.0.2.42", nodes[0].IPPure.IP)
+	purity := dataFrom[models.IPPureResult](t, request(r, "GET", adminSelf, "", true))
+	require.Equal(t, "2001:db8::42", purity.IP)
+	patchPath := fmt.Sprintf("%s/%d", adminNodes, nodes[0].ID)
 	patched := dataFrom[hub.Node](t, request(r, "PATCH", patchPath, `{"enabled":false,"country_code":"HK"}`, true))
 	require.False(t, patched.Enabled)
 	require.Equal(t, "HK", patched.CountryCode)
 	require.Equal(t, "Airport", patched.SubscriptionName)
-	res := request(r, "GET", "/api/subscriptions/ippure-self", "", false)
-	require.JSONEq(t, `{"status":"success","data":null}`, res.Body.String())
+}
+
+func TestAdminSubscriptionSpeedReportsAndCapabilities(t *testing.T) {
+	r, db := hubRouter(t)
+	path := t.TempDir()
+	t.Setenv("PATH", path)
+	const caps = "/api/admin/subscriptions/capabilities"
+	require.Equal(t, http.StatusUnauthorized, request(r, "GET", caps, "", false).Code)
+	capabilities := dataFrom[hub.ProxyCapabilities](t, request(r, "GET", caps, "", true))
+	require.False(t, capabilities.HasProxyCore)
+	require.NotNil(t, capabilities.ProxyCores)
+	require.NoError(t, os.WriteFile(filepath.Join(path, "mihomo"), []byte("#!/bin/sh\n"), 0755))
+	capabilities = dataFrom[hub.ProxyCapabilities](t, request(r, "GET", caps, "", true))
+	require.True(t, capabilities.HasProxyCore)
+	require.Equal(t, []string{"mihomo"}, capabilities.ProxyCores)
+
+	source := models.SubSource{Name: "Relay"}
+	require.NoError(t, db.Create(&source).Error)
+	node := models.SubNode{SubscriptionID: source.ID, Name: "Tokyo"}
+	require.NoError(t, db.Create(&node).Error)
+	const report = "/api/admin/subscriptions/speed-results"
+	body := fmt.Sprintf(`{"results":[{"node_id":%d,"test_status":"ok","latency_ms":20}]}`, node.ID)
+	require.Equal(t, http.StatusUnauthorized, request(r, "POST", report, body, false).Code)
+	nodes := dataFrom[[]hub.Node](t, request(r, "POST", report, body, true))
+	require.Len(t, nodes, 1)
+	require.Equal(t, "browser_http", nodes[0].TestMethod)
+	require.Equal(t, "Relay", nodes[0].SubscriptionName)
+	badBody := fmt.Sprintf(`{"results":[{"node_id":%d,"test_status":"ok","latency_ms":5,"test_method":"unknown"}]}`, node.ID)
+	require.Equal(t, http.StatusBadRequest, request(r, "POST", report, badBody, true).Code)
+	require.NoError(t, db.First(&node, node.ID).Error)
+	require.Equal(t, int64(20), node.LatencyMS)
+	require.Equal(t, "browser_http", node.TestMethod)
 }
 
 func TestUptimeAndOverviewHTTPContract(t *testing.T) {
-	r := hubRouter(t)
+	r, _ := hubRouter(t)
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))

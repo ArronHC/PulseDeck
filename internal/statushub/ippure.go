@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/komari-monitor/komari/database/models"
+	messageevent "github.com/komari-monitor/komari/database/models/messageEvent"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -132,13 +133,16 @@ func (s *Service) CheckIPPure(ctx context.Context, explicitProxy string) (models
 	return result, err
 }
 
-func (s *Service) IPPureSelf(ctx context.Context) (*models.IPPureResult, error) {
+func (s *Service) IPPureSelf(ctx context.Context, admin bool) (*models.IPPureResult, error) {
 	var cache models.IPPureSelfCache
 	if err := s.dbFor(ctx).First(&cache, 1).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
+	}
+	if !admin {
+		cache.Result.IP = maskIP(cache.Result.IP)
 	}
 	return &cache.Result, nil
 }
@@ -174,9 +178,17 @@ func (s *Service) nodePurity(ctx context.Context, node *models.SubNode) error {
 	}
 	now := s.now()
 	result.CheckedAt = &now
-	return s.dbFor(ctx).Transaction(func(tx *gorm.DB) error {
+	var message string
+	saveErr := s.dbFor(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := currentNode(tx, node); err != nil {
 			return err
+		}
+		prev := node.IPPure
+		if err == nil && purityDegraded(prev, result) && (node.PurityAlertedAt == nil || now.Sub(*node.PurityAlertedAt) >= 6*time.Hour) {
+			node.PurityAlertedAt = &now
+			message = fmt.Sprintf("IP quality degraded for subscription node %d (%s). Fraud score %d → %d, residential %t → %t, broadcast %t → %t.",
+				node.ID, maskedNodeName(*node), *prev.FraudScore, *result.FraudScore,
+				prev.IsResidential, result.IsResidential, prev.IsBroadcast, result.IsBroadcast)
 		}
 		node.IPPure = &result
 		if !node.GeoManual && result.Latitude != nil && result.Longitude != nil && result.CountryCode != "" {
@@ -187,6 +199,19 @@ func (s *Service) nodePurity(ctx context.Context, node *models.SubNode) error {
 			node.CountryCode, node.CountryName, node.City = result.CountryCode, country, result.City
 			node.Lat, node.Lng, node.HasCoordinates = *result.Latitude, *result.Longitude, true
 		}
-		return tx.Model(node).Select("IPPure", "CountryCode", "CountryName", "City", "Lat", "Lng", "HasCoordinates").Updates(node).Error
+		return tx.Model(node).Select("IPPure", "PurityAlertedAt", "CountryCode", "CountryName", "City", "Lat", "Lng", "HasCoordinates").Updates(node).Error
 	})
+	if saveErr == nil && message != "" {
+		s.emitAlert(ctx, models.EventMessage{Event: messageevent.Alert, Time: now, Emoji: "⚠️"}, message)
+	}
+	return saveErr
+}
+
+func purityDegraded(prev *models.IPPureResult, result models.IPPureResult) bool {
+	if prev == nil || prev.Error != "" || prev.FraudScore == nil || result.Error != "" || result.FraudScore == nil {
+		return false
+	}
+	oldScore, newScore := *prev.FraudScore, *result.FraudScore
+	return newScore >= 75 && oldScore < 75 || newScore-oldScore >= 20 && newScore >= 50 ||
+		prev.IsResidential && !result.IsResidential || !prev.IsBroadcast && result.IsBroadcast
 }

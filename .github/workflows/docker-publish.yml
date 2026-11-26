@@ -21,7 +21,7 @@ jobs:
       - name: Build frontend artifact
         uses: ./.github/actions/build-frontend
         with:
-          artifact-name: komari-frontend
+          artifact-name: pulsedeck-frontend
 
   build-docker-binaries:
     needs: build-frontend
@@ -54,16 +54,16 @@ jobs:
           LDFLAGS="-s -w -buildid= -extldflags=-Wl,--gc-sections,--strip-all -X github.com/komari-monitor/komari/utils.CurrentVersion=${VERSION} -X github.com/komari-monitor/komari/utils.VersionHash=${VERSION_HASH}"
 
           echo "Building for linux/amd64..."
-          GOARCH=amd64 CC="zig cc -target x86_64-linux-musl" go build -trimpath -tags "nomsgpack sqlite_omit_load_extension" -ldflags="$LDFLAGS" -o komari-linux-amd64
+          GOARCH=amd64 CC="zig cc -target x86_64-linux-musl" go build -trimpath -tags "nomsgpack sqlite_omit_load_extension" -ldflags="$LDFLAGS" -o pulsedeck-linux-amd64
 
           echo "Building for linux/arm64..."
-          GOARCH=arm64 CC="zig cc -target aarch64-linux-musl" go build -trimpath -tags "nomsgpack sqlite_omit_load_extension" -ldflags="$LDFLAGS" -o komari-linux-arm64
+          GOARCH=arm64 CC="zig cc -target aarch64-linux-musl" go build -trimpath -tags "nomsgpack sqlite_omit_load_extension" -ldflags="$LDFLAGS" -o pulsedeck-linux-arm64
 
       - name: Upload Docker binaries
         uses: actions/upload-artifact@v4
         with:
-          name: komari-docker-binaries
-          path: komari-linux-*
+          name: pulsedeck-docker-binaries
+          path: pulsedeck-linux-*
 
   build-and-push-multi-arch:
     needs: build-docker-binaries
@@ -79,7 +79,7 @@ jobs:
       - name: Download Docker binaries
         uses: actions/download-artifact@v4
         with:
-          name: komari-docker-binaries
+          name: pulsedeck-docker-binaries
           path: .
 
       - name: Set up QEMU
@@ -95,22 +95,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
+      - name: Extract metadata (Full)
+        id: meta_full
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            type=raw,value=full,enable=${{ github.ref_name == 'main' }}
             type=raw,value=${{ github.ref_name }}
             type=sha,format=short
 
-      - name: Build and push Docker image
+      - name: Build and push Full Docker image (with mihomo)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.ci
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            INSTALL_PROXY_CORE=mihomo
+          tags: ${{ steps.meta_full.outputs.tags }}
+          labels: ${{ steps.meta_full.outputs.labels }}
+
+      - name: Extract metadata (Lite)
+        id: meta_lite
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=lite,enable=${{ github.ref_name == 'main' }}
+            type=raw,value=${{ github.ref_name }}-lite
+
+      - name: Build and push Lite Docker image (without proxy core)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ci
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            INSTALL_PROXY_CORE=none
+          tags: ${{ steps.meta_lite.outputs.tags }}
+          labels: ${{ steps.meta_lite.outputs.labels }}

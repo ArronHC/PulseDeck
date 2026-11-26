@@ -1,4 +1,4 @@
-import { api, requestData } from "@/lib/http";
+import { ApiError, api, requestData } from "@/lib/http";
 import type {
   AdminOnboardingState,
   AdminOnboardingUpdatePayload,
@@ -8,6 +8,8 @@ import type {
   IPPureInfo,
   KumaSource,
   OverviewData,
+  SpeedResultReportItem,
+  SubscriptionCapabilities,
   SubscriptionItem,
   SubscriptionMapData,
   SubscriptionNode,
@@ -142,12 +144,14 @@ export function updateAdminOnboarding(
   });
 }
 
-export function fetchSubscriptionNodes(params?: {
+export interface NodeFilterParams {
   subscription_id?: number | string;
   country?: string;
   search?: string;
   only_enabled?: boolean;
-}): Promise<SubscriptionNode[]> {
+}
+
+function buildNodeFilterQuery(params?: NodeFilterParams): string {
   const qs = new URLSearchParams();
   if (params?.subscription_id !== undefined && params.subscription_id !== "") {
     qs.set("subscription_id", String(params.subscription_id));
@@ -155,8 +159,24 @@ export function fetchSubscriptionNodes(params?: {
   if (params?.country) qs.set("country", params.country);
   if (params?.search) qs.set("search", params.search);
   if (params?.only_enabled) qs.set("only_enabled", "true");
-  const suffix = qs.toString() ? `?${qs.toString()}` : "";
-  return api.getData<SubscriptionNode[]>(`/api/subscriptions/nodes${suffix}`);
+  const encoded = qs.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export function fetchSubscriptionNodes(
+  params?: NodeFilterParams,
+): Promise<SubscriptionNode[]> {
+  return api.getData<SubscriptionNode[]>(
+    `/api/subscriptions/nodes${buildNodeFilterQuery(params)}`,
+  );
+}
+
+export function fetchAdminSubscriptionNodes(
+  params?: NodeFilterParams,
+): Promise<SubscriptionNode[]> {
+  return api.getData<SubscriptionNode[]>(
+    `/api/admin/subscriptions/nodes${buildNodeFilterQuery(params)}`,
+  );
 }
 
 export function fetchSubscriptionMap(): Promise<SubscriptionMapData> {
@@ -167,11 +187,24 @@ export function fetchIPPureSelf(): Promise<IPPureInfo | null> {
   return api.getData<IPPureInfo | null>("/api/subscriptions/ippure-self");
 }
 
+export function fetchAdminIPPureSelf(): Promise<IPPureInfo | null> {
+  return api.getData<IPPureInfo | null>("/api/admin/subscriptions/ippure-self");
+}
+
+export function fetchSubscriptionCapabilities(): Promise<SubscriptionCapabilities> {
+  return api.getData<SubscriptionCapabilities>(
+    "/api/admin/subscriptions/capabilities",
+  );
+}
+
 export function createSubscription(payload: {
   name: string;
   url?: string;
   raw_content?: string;
   auto_update_hours?: number;
+  auto_speed_hours?: number;
+  auto_purity_hours?: number;
+  expire_alert_days?: number;
 }): Promise<SubscriptionItem> {
   return api.postData<SubscriptionItem>("/api/admin/subscriptions", payload);
 }
@@ -183,6 +216,9 @@ export function updateSubscription(
     url: string;
     raw_content: string;
     auto_update_hours: number;
+    auto_speed_hours: number;
+    auto_purity_hours: number;
+    expire_alert_days: number;
     enabled: boolean;
   }>,
 ): Promise<SubscriptionItem> {
@@ -225,6 +261,180 @@ export function testSubscriptionSpeed(payload: {
   concurrency?: number;
 }): Promise<unknown> {
   return api.postData("/api/admin/subscriptions/test-speed", payload);
+}
+
+export function reportSpeedResults(
+  results: SpeedResultReportItem[],
+): Promise<SubscriptionNode[]> {
+  return api.postData<SubscriptionNode[]>(
+    "/api/admin/subscriptions/speed-results",
+    { results },
+  );
+}
+
+export interface SpeedTestStreamStartEvent {
+  total: number;
+  mode?: string;
+}
+
+export interface SpeedTestStreamNodeEvent {
+  completed: number;
+  total: number;
+  node: SubscriptionNode;
+}
+
+export interface SpeedTestStreamErrorEvent {
+  message?: string;
+}
+
+export interface SpeedTestStreamDoneEvent {
+  completed?: number;
+  total?: number;
+}
+
+export interface SpeedTestStreamHandlers {
+  onStart?: (event: SpeedTestStreamStartEvent) => void;
+  onNode?: (event: SpeedTestStreamNodeEvent) => void;
+  onError?: (event: SpeedTestStreamErrorEvent) => void;
+  onDone?: (event: SpeedTestStreamDoneEvent) => void;
+}
+
+function dispatchSpeedStreamEvent(
+  eventName: string,
+  rawData: string,
+  handlers: SpeedTestStreamHandlers,
+): void {
+  if (!rawData) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawData);
+  } catch {
+    return;
+  }
+  switch (eventName) {
+    case "start":
+      handlers.onStart?.(parsed as SpeedTestStreamStartEvent);
+      break;
+    case "node":
+      handlers.onNode?.(parsed as SpeedTestStreamNodeEvent);
+      break;
+    case "error":
+      handlers.onError?.(parsed as SpeedTestStreamErrorEvent);
+      break;
+    case "done":
+      handlers.onDone?.(parsed as SpeedTestStreamDoneEvent);
+      break;
+  }
+}
+
+function parseSseEventBlock(
+  block: string,
+  handlers: SpeedTestStreamHandlers,
+): void {
+  const lines = block.split("\n");
+  let eventName = "message";
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      const value = line.slice(5);
+      dataLines.push(value.startsWith(" ") ? value.slice(1) : value);
+    }
+  }
+  if (dataLines.length > 0) {
+    dispatchSpeedStreamEvent(eventName, dataLines.join("\n"), handlers);
+  }
+}
+
+/** Stream server-side node speedtests over SSE with cancellation support. */
+export async function streamTestSubscriptionSpeed(
+  payload: {
+    node_ids?: number[];
+    subscription_id?: number;
+    mode?: "tcp" | "http" | "download";
+    concurrency?: number;
+  },
+  handlers: SpeedTestStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch("/api/admin/subscriptions/test-speed/stream", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}${response.statusText ? " " + response.statusText : ""}`;
+    let parsed: unknown = null;
+    try {
+      const text = await response.text();
+      if (text) {
+        parsed = JSON.parse(text);
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          "message" in parsed &&
+          typeof (parsed as { message?: unknown }).message === "string" &&
+          (parsed as { message: string }).message
+        ) {
+          message = (parsed as { message: string }).message;
+        }
+      }
+    } catch {
+      // Ignore body parse errors and keep HTTP status message.
+    }
+    throw new ApiError(response.status, message, parsed, response.statusText);
+  }
+
+  if (!response.body) {
+    throw new Error("当前浏览器不支持流式响应读取");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  const flush = (final: boolean) => {
+    const trailingCR = !final && buffer.endsWith("\r");
+    let normalized = (trailingCR ? buffer.slice(0, -1) : buffer).replace(/\r\n/g, "\n");
+    if (final) {
+      normalized = normalized.replace(/\r/g, "\n");
+    }
+    const blocks = normalized.split("\n\n");
+    if (final) {
+      buffer = "";
+      for (const block of blocks) {
+        if (block.trim()) parseSseEventBlock(block, handlers);
+      }
+    } else {
+      const remainder = blocks.pop() ?? "";
+      for (const block of blocks) {
+        if (block.trim()) parseSseEventBlock(block, handlers);
+      }
+      buffer = trailingCR ? `${remainder}\r` : remainder;
+    }
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        flush(true);
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      flush(false);
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function testSubscriptionPurity(payload: {
@@ -360,6 +570,82 @@ export function formatRelativeTime(iso: string | undefined | null): string {
   if (diffHour < 24) return `${diffHour}h 前`;
   const diffDay = Math.floor(diffHour / 24);
   return `${diffDay}d 前`;
+}
+
+export type TestMethodTone =
+  | "emerald"
+  | "blue"
+  | "indigo"
+  | "sky"
+  | "zinc"
+  | "amber";
+
+export interface TestMethodDisplay {
+  label: string;
+  tone: TestMethodTone;
+  title: string;
+  badgeClass: string;
+}
+
+const TEST_METHOD_DISPLAY: Record<string, TestMethodDisplay> = {
+  proxy_http: {
+    label: "代理延迟",
+    tone: "emerald",
+    title: "通过服务端代理核心真实握手访问测速端点测得",
+    badgeClass:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300",
+  },
+  proxy_download: {
+    label: "下载测速",
+    tone: "blue",
+    title: "通过服务端代理核心流式下载测速测得",
+    badgeClass:
+      "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800/70 dark:bg-blue-950/60 dark:text-blue-300",
+  },
+  browser_http: {
+    label: "本机 HTTP",
+    tone: "indigo",
+    title: "由用户当前浏览器网络直连 HTTP/TLS 探测测得",
+    badgeClass:
+      "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800/70 dark:bg-indigo-950/60 dark:text-indigo-300",
+  },
+  browser_tcp: {
+    label: "本机 TCP",
+    tone: "sky",
+    title: "由用户当前浏览器网络进行 TCP/TLS 往返探测测得（非 HTTP 端口或自签证书）",
+    badgeClass:
+      "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/70 dark:bg-sky-950/60 dark:text-sky-300",
+  },
+  tcp: {
+    label: "TCP 连通",
+    tone: "zinc",
+    title: "由服务端直接发起 TCP 握手测得（仅验证端口连通，不含代理握手）",
+    badgeClass:
+      "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300",
+  },
+  tcp_fallback: {
+    label: "TCP 回退",
+    tone: "amber",
+    title: "服务端缺少 mihomo/sing-box 代理核心，代理测速已回退为 TCP 连通性测试",
+    badgeClass:
+      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300",
+  },
+};
+
+/** Format speedtest method identifier into concise badge metadata and tooltip. */
+export function formatTestMethod(method?: string): TestMethodDisplay | null {
+  const key = (method || "").trim();
+  if (!key) return null;
+  if (key in TEST_METHOD_DISPLAY) {
+    return TEST_METHOD_DISPLAY[key];
+  }
+  return {
+    label: key,
+    tone: "zinc",
+    title: key,
+    badgeClass:
+      "border-zinc-200 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300",
+  };
 }
 
 export function formatDurationCompact(seconds: number | undefined | null): string {

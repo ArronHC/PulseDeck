@@ -1,0 +1,25 @@
+services:
+  pulsedeck-demo:
+    image: ${PULSEDECK_IMAGE:-ghcr.io/arronhc/pulsedeck:latest}
+    container_name: pulsedeck-demo
+    restart: unless-stopped
+    ports:
+      - "${KOMARI_PORT:-25774}:25774"
+    environment:
+      GIN_MODE: release
+      KOMARI_LISTEN: 0.0.0.0:25774
+      TZ: ${TZ:-Asia/Shanghai}
+      PULSEDECK_DEMO: "true"
+      PULSEDECK_SITENAME: "PulseDeck Demo"
+      PULSEDECK_DESCRIPTION: "Public read-only demo with synthetic server probes, uptime monitors, and subscription nodes."
+      # Demo admin credentials (change before exposing publicly)
+      PULSEDECK_ADMIN_USER: demo
+      PULSEDECK_ADMIN_PASS: DemoPass123!
+    volumes:
+      - ./demo-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:25774/ping >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

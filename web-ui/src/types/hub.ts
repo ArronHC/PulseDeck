@@ -205,10 +205,29 @@ export interface SubscriptionItem {
   node_count: number;
   available_count: number;
   auto_update_hours: number;
+  auto_speed_hours?: number;
+  auto_purity_hours?: number;
+  expire_alert_days?: number;
+  last_speed_test_at?: string;
+  last_purity_check_at?: string;
   enabled: boolean;
   last_synced_at?: string;
   last_error?: string;
 }
+
+export interface SubscriptionCapabilities {
+  has_proxy_core: boolean;
+  proxy_cores: string[];
+}
+
+export type SpeedTestMethod =
+  | "tcp"
+  | "tcp_fallback"
+  | "proxy_http"
+  | "proxy_download"
+  | "browser_http"
+  | "browser_tcp"
+  | string;
 
 export interface IPPureInfo {
   ip: string;
@@ -244,8 +263,19 @@ export interface SubscriptionNode {
   latency_ms: number; // -1 if failed, 0 if untested
   download_mbps: number;
   test_status: "untested" | "ok" | "timeout" | "error" | string;
+  test_message?: string;
+  test_method?: SpeedTestMethod;
   tested_at?: string;
   ippure?: IPPureInfo | null;
+}
+
+export interface SpeedResultReportItem {
+  node_id: number;
+  latency_ms: number;
+  download_mbps?: number;
+  test_status: "untested" | "ok" | "timeout" | "error" | string;
+  test_message?: string;
+  test_method?: SpeedTestMethod;
 }
 
 export interface MapCountry {

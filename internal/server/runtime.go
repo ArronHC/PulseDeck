@@ -47,12 +47,18 @@ const (
 
 // StartBackground starts scheduled work after all stores are ready.
 func (a *App) StartBackground() error {
+	db := dbcore.GetDBInstance()
+	if os.Getenv("PULSEDECK_DEMO") == "true" {
+		if err := statushub.SeedDemoIfEmpty(context.Background(), db); err != nil {
+			return fmt.Errorf("seed demo data: %w", err)
+		}
+	}
 	registerScheduledWork()
 	a.addCleanup("scheduler", func(context.Context) error {
 		scheduler.StopAll()
 		return nil
 	})
-	a.hub = statushub.New(dbcore.GetDBInstance())
+	a.hub = statushub.New(db)
 	a.addCleanup("status-hub", a.hub.Start())
 	return nil
 }

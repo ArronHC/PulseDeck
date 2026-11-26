@@ -3,6 +3,7 @@ import { LoaderCircle, LogIn, Moon, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import LanguageSwitch from "@/components/Language";
+import { PulseLogoMark } from "@/components/hub/PulseLogoMark";
 import LoginField from "@/components/auth/LoginField";
 import { useLogin } from "@/components/auth/useLogin";
 import { AccountProvider, useAccount } from "@/contexts/AccountContext";
@@ -91,19 +92,7 @@ const AdminLoginPage = () => {
               <div className="space-y-6">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M4 14h4l2-7 4 14 2-7h4" />
-                      </svg>
-                    </span>
+                    <PulseLogoMark className="h-8 w-8 shrink-0" />
                     <span className="text-sm font-semibold tracking-tight">
                       {publicInfo?.sitename || "PulseDeck"}
                     </span>

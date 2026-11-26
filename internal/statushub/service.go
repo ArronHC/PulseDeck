@@ -3,14 +3,19 @@ package statushub
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/komari-monitor/komari/database/auditlog"
 	"github.com/komari-monitor/komari/database/dbcore"
+	"github.com/komari-monitor/komari/database/models"
+	"github.com/komari-monitor/komari/utils/messageSender"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -40,6 +45,7 @@ type Service struct {
 	purityURL   string
 	testURL     string
 	downloadURL string
+	notify      func(models.EventMessage)
 	locks       sync.Map
 }
 
@@ -49,7 +55,14 @@ func New(db *gorm.DB) *Service {
 		db: db, http: &http.Client{Timeout: 25 * time.Second},
 		now:       func() time.Time { return time.Now().UTC() },
 		purityURL: purityURL, testURL: defaultTestURL, downloadURL: downloadURL,
+		notify: func(ev models.EventMessage) { _ = messageSender.SendNotification(ev) },
 	}
+}
+
+func (s *Service) emitAlert(ctx context.Context, event models.EventMessage, message string) {
+	event.Message = message
+	auditlog.EventLogWithDB(s.dbFor(context.WithoutCancel(ctx)), "warn", message)
+	s.notify(event)
 }
 
 func (s *Service) dbFor(ctx context.Context) *gorm.DB {
@@ -92,6 +105,41 @@ func safeNetworkError(err error) string {
 		return "request canceled"
 	}
 	return "connection failed"
+}
+
+func maskHost(host string) string {
+	if host == "" {
+		return ""
+	}
+	if addr, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil {
+		return maskIP(addr.String())
+	}
+	labels := strings.Split(strings.TrimSuffix(host, "."), ".")
+	switch len(labels) {
+	case 1:
+		return "***"
+	case 2:
+		return "***." + labels[1]
+	default:
+		return "***." + strings.Join(labels[len(labels)-2:], ".")
+	}
+}
+
+func maskIP(ip string) string {
+	if ip == "" {
+		return ""
+	}
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return "***"
+	}
+	addr = addr.Unmap()
+	if addr.Is4() {
+		b := addr.As4()
+		return fmt.Sprintf("%d.%d.*.*", b[0], b[1])
+	}
+	b := addr.As16()
+	return fmt.Sprintf("%x:%x:*:*:*:*:*:*", uint16(b[0])<<8|uint16(b[1]), uint16(b[2])<<8|uint16(b[3]))
 }
 
 func maskURL(raw string, subscription bool) string {

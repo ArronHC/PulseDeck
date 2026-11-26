@@ -19,6 +19,7 @@ import { fetchOverview } from "@/lib/hubApi";
 import { loginPath } from "@/utils/loginRedirect";
 import type { HealthStatus } from "@/types/hub";
 import { HealthPill } from "./HubUi";
+import { PulseLogoMark } from "./PulseLogoMark";
 import { CommandSearchDialog } from "./CommandSearchDialog";
 import LanguageSwitch from "@/components/Language";
 
@@ -120,19 +121,7 @@ const TopHeaderInner: React.FC = () => {
                 to="/"
                 className="flex min-w-0 items-center gap-2.5 text-[var(--hub-ink)] no-underline"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M4 14h4l2-7 4 14 2-7h4" />
-                  </svg>
-                </span>
+                <PulseLogoMark className="h-7 w-7 shrink-0" />
                 <span className="truncate text-[15px] font-semibold tracking-tight">
                   {siteName}
                 </span>

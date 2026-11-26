@@ -9,6 +9,7 @@ import (
 
 	"github.com/komari-monitor/komari/database/models"
 	appconfig "github.com/komari-monitor/komari/internal/config"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -26,7 +27,55 @@ func openTestDB(t *testing.T, name string) *gorm.DB {
 		t.Fatalf("get sqlite test db handle: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 	return db
+}
+
+func TestKomariSQLiteUpgradeWithStatusHubSchema(t *testing.T) {
+	db := openTestDB(t, "komari_to_pulsedeck")
+	t.Setenv("TZ", "UTC")
+	require.NoError(t, db.Exec(`
+		CREATE TABLE configs (id integer PRIMARY KEY, sitename varchar(100) NOT NULL, description text);
+		INSERT INTO configs VALUES (1, 'Upstream Komari', 'Existing status site');
+		CREATE TABLE clients (uuid varchar(36) PRIMARY KEY, token varchar(255) UNIQUE NOT NULL, name varchar(100));
+		INSERT INTO clients VALUES ('old-client', 'old-token', 'Existing monitor');
+		CREATE TABLE records (client varchar(36), time datetime, cpu decimal(5,2), ram bigint);
+		INSERT INTO records VALUES ('old-client', '2025-03-12 14:20:00', 39.25, 268435456);
+		CREATE TABLE ping_tasks (id integer PRIMARY KEY, name varchar(255), type varchar(12), target varchar(255), interval integer, all_clients boolean);
+		INSERT INTO ping_tasks VALUES (7, 'Existing ping', 'icmp', 'example.org', 60, true);
+	`).Error)
+
+	require.NoError(t, Run(Context{DB: db}))
+	require.NoError(t, db.AutoMigrate(&models.Client{}, &models.PingTask{},
+		&models.UptimeMonitor{}, &models.UptimeHeartbeat{}, &models.UptimeIncident{}, &models.UptimeKumaSource{},
+		&models.SubSource{}, &models.SubNode{}, &models.SubSpeedSample{}, &models.IPPureSelfCache{}))
+	require.NoError(t, Run(Context{DB: db}))
+
+	var settings appconfig.ConfigItem
+	require.NoError(t, db.First(&settings, "key = ?", appconfig.SitenameKey).Error)
+	require.Equal(t, `"Upstream Komari"`, settings.Value)
+	var client models.Client
+	require.NoError(t, db.First(&client, "uuid = ?", "old-client").Error)
+	require.Equal(t, "Existing monitor", client.Name)
+	require.Equal(t, "old-token", client.Token)
+	var record models.Record
+	require.NoError(t, db.First(&record, "client = ?", client.UUID).Error)
+	require.Equal(t, float32(39.25), record.Cpu)
+	require.Equal(t, int64(268435456), record.Ram)
+	require.True(t, record.Time.Equal(time.Date(2025, 3, 12, 14, 20, 0, 0, time.UTC)))
+	var ping models.PingTask
+	require.NoError(t, db.First(&ping, 7).Error)
+	require.Equal(t, "Existing ping", ping.Name)
+	require.Equal(t, "example.org", ping.Target)
+	require.Equal(t, models.StringArray{client.UUID}, ping.Clients)
+
+	source := models.SubSource{Name: "New subscription", AutoSpeedHours: 12, AutoPurityHours: 24, ExpireAlertDays: 7}
+	require.NoError(t, db.Create(&source).Error)
+	node := models.SubNode{SubscriptionID: source.ID, Host: "198.51.100.1", TestMethod: "tcp"}
+	require.NoError(t, db.Create(&node).Error)
+	var saved models.SubNode
+	require.NoError(t, db.First(&saved, node.ID).Error)
+	require.Equal(t, "tcp", saved.TestMethod)
 }
 
 func TestHasLegacyConfigTable(t *testing.T) {
