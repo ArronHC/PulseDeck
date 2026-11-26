@@ -259,9 +259,11 @@ func (m *Module) spawnChild(vm *moejs.Runtime, command string, arguments []strin
 		return child
 	}
 	_ = native.Set(vm, child, "pid", cmd.Process.Pid)
+	resourceClosed := make(chan struct{})
 	resourceID := m.runtime.AddResource(func() {
 		_ = cmd.Process.Kill()
 		cancel()
+		close(resourceClosed)
 	})
 	if resourceID == 0 {
 		_ = stdin.Close()
@@ -304,9 +306,14 @@ func (m *Module) spawnChild(vm *moejs.Runtime, command string, arguments []strin
 		}
 		return native.From(vm, false), nil
 	}))
-	m.pipeChildOutput(vm, stdoutReader, stdout, options.encoding)
-	m.pipeChildOutput(vm, stderrReader, stderr, options.encoding)
+	var pipes sync.WaitGroup
+	pipes.Add(2)
+	m.pipeChildOutput(vm, stdoutReader, stdout, options.encoding, &pipes, resourceClosed)
+	m.pipeChildOutput(vm, stderrReader, stderr, options.encoding, &pipes, resourceClosed)
 	go func() {
+		// Wait for stdio pipe readers to reach EOF and flush their stream end
+		// events before calling cmd.Wait, which closes os/exec pipe descriptors.
+		pipes.Wait()
 		err := cmd.Wait()
 		cancel()
 		m.runtime.RemoveResource(resourceID)
@@ -422,20 +429,20 @@ func childCallback(args []moejs.Value) moejs.Value {
 	}
 	return moejs.Undefined()
 }
-func (m *Module) pipeChildOutput(vm *moejs.Runtime, reader io.Reader, stream *engine.Object, encoding string) {
+func (m *Module) pipeChildOutput(vm *moejs.Runtime, reader io.Reader, stream *engine.Object, encoding string, pipes *sync.WaitGroup, done <-chan struct{}) {
 	push, _ := checkedFunction(native.Get(vm, stream, "push"))
 	setEncoding, _ := checkedFunction(native.Get(vm, stream, "setEncoding"))
 	if encoding != "" && !native.IsNil(setEncoding) {
 		_, _ = native.Call(vm, setEncoding, engine.ObjectValue(stream), native.From(vm, encoding))
 	}
 	go func() {
+		defer pipes.Done()
 		data := make([]byte, 32*1024)
 		for {
 			count, err := reader.Read(data)
 			if count > 0 {
 				chunk := append([]byte(nil), data[:count]...)
-				delivered := make(chan struct {
-				})
+				delivered := make(chan struct{})
 				if !m.runtime.RunOnLoop(func(vm *moejs.Runtime) {
 					defer close(delivered)
 					_ = m.runtime.RunJob(vm, "child_process stream", func() error {
@@ -445,15 +452,26 @@ func (m *Module) pipeChildOutput(vm *moejs.Runtime, reader io.Reader, stream *en
 				}) {
 					return
 				}
-				<-delivered
+				select {
+				case <-delivered:
+				case <-done:
+					return
+				}
 			}
 			if err != nil {
-				m.runtime.RunOnLoop(func(vm *moejs.Runtime) {
+				closed := make(chan struct{})
+				if m.runtime.RunOnLoop(func(vm *moejs.Runtime) {
+					defer close(closed)
 					_ = m.runtime.RunJob(vm, "child_process stream close", func() error {
 						_, pushErr := native.Call(vm, push, engine.ObjectValue(stream), moejs.Null())
 						return pushErr
 					})
-				})
+				}) {
+					select {
+					case <-closed:
+					case <-done:
+					}
+				}
 				return
 			}
 		}
