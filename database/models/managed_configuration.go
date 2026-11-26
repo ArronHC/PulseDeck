@@ -2,7 +2,7 @@ package models
 
 import "strings"
 
-// ThemeConfigurationManaged is the managed configuration wire format used by plugins and notification channels.
+// ThemeConfigurationManaged is the managed configuration wire format used by notification channels.
 const ThemeConfigurationManaged = "managed"
 
 // IsLocalizedText reports whether a manifest text field has a usable value.

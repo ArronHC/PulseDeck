@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Blocks, Globe, Server, ShieldCheck } from "lucide-react";
+import { Activity, Globe, Server, ShieldCheck } from "lucide-react";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 import { SettingCardCollapse } from "@/components/admin/SettingCard";
 import { Apache2_LICENSE, MIT_LICENSE } from "@/utils/field";
@@ -10,7 +10,7 @@ import goDependencies from "@/utils/openSource.go.json";
 const ACKNOWLEDGMENTS = [
   {
     name: "Komari",
-    role: "底层探针、WebSocket/RPC 协议与插件扩展引擎",
+    role: "底层探针、指标存储与 WebSocket/RPC 协议",
     url: "https://github.com/komari-monitor/komari",
     license: "MIT",
   },
@@ -132,13 +132,13 @@ export default function AboutPage() {
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-                    前台只读状态展示 · 后台统一资产管理 · 完整插件扩展生态
+                    前台只读状态展示 · 后台统一资产管理 · 轻量纯净无冗余
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
                 <Server className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <div className="mt-2.5 text-xs font-semibold">探针节点引擎</div>
@@ -158,13 +158,6 @@ export default function AboutPage() {
                 <div className="mt-2.5 text-xs font-semibold">订阅与 IP 纯净度</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
                   机场订阅解析、全球拓扑分布图、并发测速与 IPPure 风险评估。
-                </p>
-              </div>
-              <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-canvas)] p-4">
-                <Blocks className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <div className="mt-2.5 text-xs font-semibold">插件扩展机制</div>
-                <p className="mt-1 text-[11px] leading-relaxed text-[var(--hub-muted)]">
-                  支持插件市场安装、独立权限沙箱、自定义页面与通知渠道扩展。
                 </p>
               </div>
             </div>

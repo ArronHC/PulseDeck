@@ -8,8 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/komari-monitor/komari/database/auditlog"
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/internal/plugin"
 	logger "github.com/komari-monitor/komari/utils/log"
 	"github.com/komari-monitor/komari/web/backup"
 	"github.com/komari-monitor/komari/web/upload"
@@ -18,27 +16,17 @@ import (
 func NewArchiveUploadHandler() *upload.Handler {
 	h := upload.NewHandler(upload.DefaultStore, map[upload.Purpose]upload.Finalizer{
 		upload.PurposeBackup: finalizeBackupUpload,
-		upload.PurposePlugin: finalizePluginUpload,
 	})
 	h.OnMerged = auditArchiveUpload
 	return h
 }
 
-func auditArchiveUpload(c *gin.Context, session upload.Session, result upload.Result) {
+func auditArchiveUpload(c *gin.Context, session upload.Session, _ upload.Result) {
 	ip := c.ClientIP()
 	actor := c.GetString("uuid")
 	filename := session.Metadata.Filename
 	size := auditlog.FormatBytes(session.Metadata.Size)
-	switch session.Metadata.Purpose {
-	case upload.PurposeBackup:
-		auditlog.Log(ip, actor, fmt.Sprintf("Upload backup archive for restore: file=%s, size=%s", filename, size), "warn")
-	case upload.PurposePlugin:
-		if info, ok := result.Data.(models.Plugin); ok {
-			auditlog.Log(ip, actor, fmt.Sprintf("Install plugin from upload: short=%s, version=%s, file=%s, size=%s", info.Short, info.Version, filename, size), "warn")
-		} else {
-			auditlog.Log(ip, actor, fmt.Sprintf("Install plugin from upload: file=%s, size=%s", filename, size), "warn")
-		}
-	}
+	auditlog.Log(ip, actor, fmt.Sprintf("Upload backup archive for restore: file=%s, size=%s", filename, size), "warn")
 }
 
 func finalizeBackupUpload(session upload.Session) (upload.Result, error) {
@@ -72,12 +60,4 @@ func finalizeBackupUpload(session upload.Session) (upload.Result, error) {
 		Message: "Backup uploaded successfully. The service will restart and apply the backup.",
 		Data:    map[string]string{"path": filepath.Join(".", "data", "backup.zip")},
 	}, nil
-}
-
-func finalizePluginUpload(session upload.Session) (upload.Result, error) {
-	info, err := plugin.InstallZip(session.ArchivePath)
-	if err != nil {
-		return upload.Result{}, err
-	}
-	return upload.Result{Message: "插件上传成功", Data: info}, nil
 }

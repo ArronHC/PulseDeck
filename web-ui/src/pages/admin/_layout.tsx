@@ -1,17 +1,12 @@
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import PulseAdminShell from "@/components/admin/PulseAdminShell";
-import { AdminNavigationProvider } from "@/contexts/AdminNavigationContext";
 import { AccountProvider, useAccount } from "@/contexts/AccountContext";
 import Loading from "@/components/loading";
 import { loginPath, resolveLoginRedirect } from "@/utils/loginRedirect";
 
 const AdminLayout = () => {
-  return (
-    <AdminNavigationProvider>
-      <PulseAdminShell content={<Outlet />} />
-    </AdminNavigationProvider>
-  );
+  return <PulseAdminShell content={<Outlet />} />;
 };
 
 const AdminRoute = () => {

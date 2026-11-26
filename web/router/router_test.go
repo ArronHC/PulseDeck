@@ -51,9 +51,6 @@ func TestAdminRoutesAreRegistered(t *testing.T) {
 		{http.MethodPost, "/api/admin/onboarding"},
 		{http.MethodPost, "/api/admin/task/exec"},
 		{http.MethodGet, "/api/admin/task/all"},
-		{http.MethodPost, "/api/admin/plugin/enabled"},
-		{http.MethodGet, "/api/admin/plugin/list"},
-		{http.MethodPost, "/api/admin/plugin/configuration"},
 		{http.MethodPost, "/api/admin/upload/init"},
 		{http.MethodPost, "/api/admin/upload/chunk"},
 		{http.MethodPost, "/api/admin/upload/merge"},
@@ -200,6 +197,8 @@ func TestRemovedEndpointsAreUnregistered(t *testing.T) {
 	for _, route := range engine.Routes() {
 		switch {
 		case strings.HasPrefix(route.Path, "/api/admin/theme"),
+			strings.HasPrefix(route.Path, "/api/admin/plugin"),
+			strings.HasPrefix(route.Path, "/api/plugin"),
 			strings.HasPrefix(route.Path, "/themes/"),
 			strings.HasPrefix(route.Path, "/probe-theme"),
 			strings.HasPrefix(route.Path, "/api/preview/client/"),
@@ -209,7 +208,14 @@ func TestRemovedEndpointsAreUnregistered(t *testing.T) {
 			t.Errorf("removed route %s %s is still registered", route.Method, route.Path)
 		}
 	}
-	for _, path := range []string{"/api/admin/theme/list", "/api/clients/terminal", "/api/admin/client/example/file/download"} {
+	for _, path := range []string{
+		"/api/admin/theme/list",
+		"/api/admin/plugin/list",
+		"/api/admin/plugin/market/catalog",
+		"/api/plugin/example/index.html",
+		"/api/clients/terminal",
+		"/api/admin/client/example/file/download",
+	} {
 		response := httptest.NewRecorder()
 		engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusNotFound {
