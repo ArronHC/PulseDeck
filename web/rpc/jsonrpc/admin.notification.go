@@ -113,7 +113,7 @@ func sanitizeNotificationChannelAuditMap(data map[string]any) map[string]any {
 	return out
 }
 
-// adminSendNotification 发送一条通知。仅供外部（插件/脚本）通过 RPC 调用，
+// adminSendNotification 供外部脚本通过 RPC 发送通知。
 // 内部通知逻辑（notifier/renewal/session 等）直接调用 messageSender.SendNotification。
 func adminSendNotification(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {

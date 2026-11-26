@@ -4,7 +4,6 @@ import {
   Activity,
   ArrowRight,
   Bell,
-  Blocks,
   Check,
   CheckCircle2,
   Clock,
@@ -47,7 +46,7 @@ const WALKTHROUGH_STEPS = [
     highlights: [
       "前台状态页零管理弹窗，访客与团队成员可安全浏览",
       "支持服务器探针、Uptime 监控、代理订阅三大核心模块",
-      "完整保留插件系统与插件市场，支持按需扩展",
+      "支持多渠道告警通知、审计日志与远程命令执行",
     ],
     ctaLabel: "查看系统设置",
     ctaTo: "/admin/settings/site",
@@ -279,7 +278,7 @@ export default function AdminOverviewPage() {
             控制台概览
           </h1>
           <p className="mt-0.5 text-xs text-[var(--hub-muted)]">
-            集中管理服务器探针、服务状态监控、订阅节点与插件扩展
+            集中管理服务器探针、服务状态监控与代理订阅节点
           </p>
         </div>
 
@@ -563,7 +562,7 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
-      {/* Bottom Row: Recent Events + System Storage & Plugins */}
+      {/* Bottom Row: Recent Events + System Storage */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-surface)] p-5 lg:col-span-7">
           <div className="flex items-center justify-between border-b border-[var(--hub-border)] pb-3">
@@ -674,37 +673,6 @@ export default function AdminOverviewPage() {
                     ? formatBytes(dbSize.local_total)
                     : "--"}
                 </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Plugins & Extensions Shortcut Card */}
-          <div className="rounded-xl border border-[var(--hub-border)] bg-[var(--hub-surface)] p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Blocks className="h-4 w-4 text-[var(--hub-muted)]" />
-                <div>
-                  <h2 className="text-sm font-semibold text-[var(--hub-ink)]">
-                    插件扩展生态
-                  </h2>
-                  <p className="text-[11px] text-[var(--hub-muted)]">
-                    当前已安装 {onboarding?.counts.plugins ?? 0} 个插件
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/admin/plugins/market"
-                  className="rounded-lg border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-2.5 py-1.5 text-xs font-medium text-[var(--hub-ink)] no-underline hover:border-zinc-300 dark:hover:border-zinc-700"
-                >
-                  插件市场
-                </Link>
-                <Link
-                  to="/admin/plugins"
-                  className="rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white no-underline hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-                >
-                  管理
-                </Link>
               </div>
             </div>
           </div>

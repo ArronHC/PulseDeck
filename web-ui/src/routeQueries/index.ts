@@ -7,5 +7,4 @@
 import "./admin";
 import "./ops";
 import "./settings";
-import "./appearance";
 import "./system";

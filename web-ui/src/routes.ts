@@ -44,7 +44,6 @@ const AdminOverview = page(() => import("./pages/admin/Overview"));
 const AdminServers = page(() => import("./pages/admin"));
 const AdminUptime = page(() => import("./pages/admin/UptimeManage"));
 const AdminSubscriptions = page(() => import("./pages/admin/SubscriptionsManage"));
-const PluginMarket = page(() => import("./pages/admin/market/plugins"));
 const NotFound = page(() => import("./pages/404"));
 
 export const routes: RouteObject[] = [
@@ -68,10 +67,6 @@ export const routes: RouteObject[] = [
       {
         path: "instance/:uuid",
         ...page(() => import("./pages/instance")),
-      },
-      {
-        path: "plugin/:short/*",
-        ...page(() => import("./pages/plugin_page")),
       },
     ],
   },
@@ -111,26 +106,6 @@ export const routes: RouteObject[] = [
       {
         path: "subscriptions",
         ...AdminSubscriptions,
-      },
-      {
-        path: "plugins",
-        ...page(() => import("./pages/admin/plugins")),
-      },
-      {
-        path: "plugins/market",
-        ...PluginMarket,
-      },
-      {
-        path: "plugins/config",
-        ...page(() => import("./pages/admin/plugin_config")),
-      },
-      {
-        path: "plugin-page",
-        ...page(() => import("./pages/admin/plugin_page")),
-      },
-      {
-        path: "market/plugins",
-        ...PluginMarket,
       },
       {
         path: "sessions",

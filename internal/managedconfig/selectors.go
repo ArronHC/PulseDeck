@@ -1,5 +1,4 @@
-// Package managedconfig implements the shared managed-configuration behavior
-// used by themes and plugins.
+// Package managedconfig implements managed configuration for notification channels.
 package managedconfig
 
 import (
@@ -15,8 +14,7 @@ const (
 	TypePingTasks = "pingtasks"
 )
 
-// Items returns the declared managed configuration items. An omitted type is
-// managed, matching the theme configuration default.
+// Items returns the declared managed configuration items. An omitted type defaults to managed.
 func Items(configuration models.Configuration) []models.ManagedThemeConfigurationItem {
 	if configuration.Type != "" && !strings.EqualFold(configuration.Type, models.ThemeConfigurationManaged) {
 		return nil
@@ -56,7 +54,7 @@ func DefaultValue(item models.ManagedThemeConfigurationItem) any {
 }
 
 // ResolveForOutput decodes declared selectors, drops deleted references, and
-// returns typed arrays suitable for public theme settings and plugin config.
+// returns typed arrays of the remaining references.
 func ResolveForOutput(values map[string]any, items []models.ManagedThemeConfigurationItem) error {
 	hasNodes := false
 	hasPingTasks := false
