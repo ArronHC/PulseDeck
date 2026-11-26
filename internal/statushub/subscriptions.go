@@ -15,11 +15,19 @@ import (
 )
 
 type SubscriptionInput struct {
-	Name            *string `json:"name"`
-	URL             *string `json:"url"`
-	RawContent      *string `json:"raw_content"`
-	AutoUpdateHours *int    `json:"auto_update_hours"`
-	Enabled         *bool   `json:"enabled"`
+	Name                *string    `json:"name"`
+	URL                 *string    `json:"url"`
+	RawContent          *string    `json:"raw_content"`
+	AutoUpdateHours     *int       `json:"auto_update_hours"`
+	AutoSpeedHours      *int       `json:"auto_speed_hours"`
+	AutoPurityHours     *int       `json:"auto_purity_hours"`
+	ExpireAlertDays     *int       `json:"expire_alert_days"`
+	LastSpeedTestAt     *time.Time `json:"last_speed_test_at"`
+	LastSpeedAttemptAt  *time.Time `json:"-"`
+	LastPurityCheckAt   *time.Time `json:"last_purity_check_at"`
+	LastPurityAttemptAt *time.Time `json:"-"`
+	ExpireAlertedAt     *time.Time `json:"-"`
+	Enabled             *bool      `json:"enabled"`
 }
 
 type NodePatch struct {
@@ -51,6 +59,9 @@ func (s *Service) SaveSubscription(ctx context.Context, id uint, input Subscript
 	assign(&source.URL, input.URL)
 	assign(&source.RawContent, input.RawContent)
 	assign(&source.AutoUpdateHours, input.AutoUpdateHours)
+	assign(&source.AutoSpeedHours, input.AutoSpeedHours)
+	assign(&source.AutoPurityHours, input.AutoPurityHours)
+	assign(&source.ExpireAlertDays, input.ExpireAlertDays)
 	assign(&source.Enabled, input.Enabled)
 	source.Name, source.URL = strings.TrimSpace(source.Name), strings.TrimSpace(source.URL)
 	if source.Name == "" {
@@ -58,6 +69,15 @@ func (s *Service) SaveSubscription(ctx context.Context, id uint, input Subscript
 	}
 	if source.AutoUpdateHours < 0 || source.AutoUpdateHours > 8760 {
 		return source, InputError("auto_update_hours must be 0–8760")
+	}
+	if source.AutoSpeedHours < 0 || source.AutoSpeedHours > 168 {
+		return source, InputError("auto_speed_hours must be 0–168")
+	}
+	if source.AutoPurityHours < 0 || source.AutoPurityHours > 720 {
+		return source, InputError("auto_purity_hours must be 0–720")
+	}
+	if source.ExpireAlertDays < 0 || source.ExpireAlertDays > 365 {
+		return source, InputError("expire_alert_days must be 0–365")
 	}
 	if input.URL != nil && source.URL != "" && input.RawContent != nil && strings.TrimSpace(source.RawContent) != "" {
 		return source, InputError("provide url or raw_content")
@@ -83,8 +103,19 @@ func (s *Service) SaveSubscription(ctx context.Context, id uint, input Subscript
 		}
 	}
 	err = db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&source).Error; err != nil {
-			return err
+		if id == 0 {
+			if err := tx.Create(&source).Error; err != nil {
+				return err
+			}
+		} else {
+			// Scheduler timestamps can change while the provider is being fetched.
+			if err := tx.Model(&source).Select("Name", "URL", "RawContent", "SourceType", "Enabled",
+				"AutoUpdateHours", "AutoSpeedHours", "AutoPurityHours", "ExpireAlertDays").Updates(&source).Error; err != nil {
+				return err
+			}
+			if err := tx.First(&source, id).Error; err != nil {
+				return err
+			}
 		}
 		if changed {
 			return s.finishRefresh(tx, &source, nodes, info)

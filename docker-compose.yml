@@ -1,5 +1,7 @@
 services:
   pulsedeck:
+    # Default `:latest` (same as `:full`) includes mihomo for out-of-the-box encrypted-node speedtests and IPPure checks.
+    # Switch to `ghcr.io/arronhc/pulsedeck:lite` for a minimal footprint without an embedded proxy core.
     image: ${PULSEDECK_IMAGE:-ghcr.io/arronhc/pulsedeck:latest}
     container_name: pulsedeck
     restart: unless-stopped
@@ -17,7 +19,7 @@ services:
       # PULSEDECK_PRIVATE_SITE: "false"
     volumes:
       - ./data:/app/data
-      # Optional: mount a host mihomo or sing-box binary for encrypted-node IPPure checks
+      # Optional: mount a custom sing-box/mihomo binary when running the `:lite` image
       # - /usr/local/bin/mihomo:/usr/local/bin/mihomo:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:25774/ping >/dev/null 2>&1 || curl -fsS http://127.0.0.1:25774/api/install/status >/dev/null 2>&1 || exit 1"]

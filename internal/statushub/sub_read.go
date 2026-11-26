@@ -10,22 +10,30 @@ import (
 )
 
 type Subscription struct {
-	ID              uint       `json:"id"`
-	Name            string     `json:"name"`
-	SourceType      string     `json:"source_type"`
-	MaskedURL       string     `json:"masked_url"`
-	Upload          int64      `json:"upload"`
-	Download        int64      `json:"download"`
-	Total           int64      `json:"total"`
-	Expire          int64      `json:"expire"`
-	NodeCount       int        `json:"node_count"`
-	AvailableCount  int        `json:"available_count"`
-	AutoUpdateHours int        `json:"auto_update_hours"`
-	Enabled         bool       `json:"enabled"`
-	LastSyncedAt    *time.Time `json:"last_synced_at"`
-	LastError       string     `json:"last_error"`
-	URL             string     `json:"url,omitempty"`
-	RawContent      string     `json:"raw_content,omitempty"`
+	ID                  uint       `json:"id"`
+	Name                string     `json:"name"`
+	SourceType          string     `json:"source_type"`
+	MaskedURL           string     `json:"masked_url"`
+	Upload              int64      `json:"upload"`
+	Download            int64      `json:"download"`
+	Total               int64      `json:"total"`
+	Expire              int64      `json:"expire"`
+	NodeCount           int        `json:"node_count"`
+	AvailableCount      int        `json:"available_count"`
+	AutoUpdateHours     int        `json:"auto_update_hours"`
+	AutoSpeedHours      int        `json:"auto_speed_hours"`
+	AutoPurityHours     int        `json:"auto_purity_hours"`
+	ExpireAlertDays     int        `json:"expire_alert_days"`
+	LastSpeedTestAt     *time.Time `json:"last_speed_test_at"`
+	LastSpeedAttemptAt  *time.Time `json:"-"`
+	LastPurityCheckAt   *time.Time `json:"last_purity_check_at"`
+	LastPurityAttemptAt *time.Time `json:"-"`
+	ExpireAlertedAt     *time.Time `json:"-"`
+	Enabled             bool       `json:"enabled"`
+	LastSyncedAt        *time.Time `json:"last_synced_at"`
+	LastError           string     `json:"last_error"`
+	URL                 string     `json:"url,omitempty"`
+	RawContent          string     `json:"raw_content,omitempty"`
 }
 
 type Node struct {
@@ -45,6 +53,7 @@ type Node struct {
 	LatencyMS        int64                `json:"latency_ms"`
 	DownloadMbps     float64              `json:"download_mbps"`
 	TestStatus       string               `json:"test_status"`
+	TestMethod       string               `json:"test_method"`
 	TestMessage      string               `json:"test_message"`
 	TestedAt         *time.Time           `json:"tested_at"`
 	IPPure           *models.IPPureResult `json:"ippure"`
@@ -68,8 +77,32 @@ func NodeView(node models.SubNode, subscriptionName string) Node {
 		Name: node.Name, Protocol: node.Protocol, Host: node.Host, Port: node.Port,
 		CountryCode: node.CountryCode, CountryName: node.CountryName, City: node.City, Lat: node.Lat, Lng: node.Lng,
 		Enabled: node.Enabled, LatencyMS: node.LatencyMS, DownloadMbps: node.DownloadMbps,
-		TestStatus: node.TestStatus, TestMessage: node.TestMessage, TestedAt: node.TestedAt, IPPure: purity, IPPureError: purityError,
+		TestStatus: node.TestStatus, TestMethod: node.TestMethod, TestMessage: node.TestMessage,
+		TestedAt: node.TestedAt, IPPure: purity, IPPureError: purityError,
 	}
+}
+
+func sanitizedNodeView(node models.SubNode, subscriptionName string) Node {
+	v := NodeView(node, subscriptionName)
+	v.Name, v.Host = maskedNodeName(node), maskHost(v.Host)
+	if v.IPPure != nil {
+		purity := *v.IPPure
+		purity.IP = maskIP(purity.IP)
+		v.IPPure = &purity
+	}
+	return v
+}
+
+func maskedNodeName(node models.SubNode) string {
+	name := node.Name
+	// Imported nodes without a name use the endpoint as their display name.
+	if node.Host != "" {
+		name = strings.ReplaceAll(name, node.Host, maskHost(node.Host))
+	}
+	if node.IPPure != nil && node.IPPure.IP != "" {
+		name = strings.ReplaceAll(name, node.IPPure.IP, maskIP(node.IPPure.IP))
+	}
+	return name
 }
 
 type NodeFilter struct {
@@ -107,18 +140,6 @@ func (s *Service) readSubscriptions(ctx context.Context, secrets bool, filter No
 	}
 	if err := query.Find(&data.nodes).Error; err != nil {
 		return data, err
-	}
-	if filter.Search != "" {
-		search := strings.ToLower(filter.Search)
-		names := data.names()
-		out := data.nodes[:0]
-		for _, n := range data.nodes {
-			text := strings.ToLower(strings.Join([]string{n.Name, names[n.SubscriptionID], n.Host, n.City, n.CountryName, n.Protocol}, "\x00"))
-			if strings.Contains(text, search) {
-				out = append(out, n)
-			}
-		}
-		data.nodes = out
 	}
 	return data, nil
 }
@@ -163,6 +184,9 @@ func subscriptionView(source models.SubSource, nodes []models.SubNode, admin boo
 		ID: source.ID, Name: source.Name, SourceType: source.SourceType, MaskedURL: maskURL(source.URL, true),
 		Upload: source.Upload, Download: source.Download, Total: source.Total, Expire: source.Expire,
 		NodeCount: len(nodes), AutoUpdateHours: source.AutoUpdateHours, Enabled: source.Enabled,
+		AutoSpeedHours: source.AutoSpeedHours, AutoPurityHours: source.AutoPurityHours, ExpireAlertDays: source.ExpireAlertDays,
+		LastSpeedTestAt: source.LastSpeedTestAt, LastSpeedAttemptAt: source.LastSpeedAttemptAt,
+		LastPurityCheckAt: source.LastPurityCheckAt, LastPurityAttemptAt: source.LastPurityAttemptAt, ExpireAlertedAt: source.ExpireAlertedAt,
 		LastSyncedAt: source.LastSyncedAt, LastError: source.LastError,
 	}
 	for _, n := range nodes {
@@ -180,12 +204,24 @@ func available(n models.SubNode) bool {
 	return n.Enabled && n.TestStatus == "ok"
 }
 
-func (s *Service) Nodes(ctx context.Context, filter NodeFilter) ([]Node, error) {
+func (s *Service) Nodes(ctx context.Context, filter NodeFilter, admin bool) ([]Node, error) {
 	data, err := s.readSubscriptions(ctx, false, filter)
 	names := data.names()
 	out := make([]Node, 0, len(data.nodes))
+	view := sanitizedNodeView
+	if admin {
+		view = NodeView
+	}
+	search := strings.ToLower(filter.Search)
 	for _, n := range data.nodes {
-		out = append(out, NodeView(n, names[n.SubscriptionID]))
+		node := view(n, names[n.SubscriptionID])
+		if search != "" {
+			text := strings.ToLower(strings.Join([]string{node.Name, node.SubscriptionName, node.Host, node.City, node.CountryName, node.Protocol}, "\x00"))
+			if !strings.Contains(text, search) {
+				continue
+			}
+		}
+		out = append(out, node)
 	}
 	return out, err
 }
@@ -242,7 +278,7 @@ func (data subscriptionData) mapData() SubscriptionMap {
 			continue
 		}
 		marker := MapMarker{
-			NodeID: n.ID, Name: n.Name, CountryCode: n.CountryCode, City: n.City,
+			NodeID: n.ID, Name: maskedNodeName(n), CountryCode: n.CountryCode, City: n.City,
 			Lat: n.Lat, Lng: n.Lng, LatencyMS: n.LatencyMS, FraudScore: -1,
 		}
 		if validPurity(n) {

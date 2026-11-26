@@ -19,6 +19,24 @@ import (
 
 var errProxyCore = errors.New("no proxy core found; install mihomo or sing-box on the server PATH")
 
+var proxyCoreNames = [...]string{"mihomo", "sing-box"}
+
+type ProxyCapabilities struct {
+	HasProxyCore bool     `json:"has_proxy_core"`
+	ProxyCores   []string `json:"proxy_cores"`
+}
+
+func (s *Service) ProxyCapabilities() ProxyCapabilities {
+	capabilities := ProxyCapabilities{ProxyCores: []string{}}
+	for _, name := range proxyCoreNames {
+		if _, err := exec.LookPath(name); err == nil {
+			capabilities.ProxyCores = append(capabilities.ProxyCores, name)
+		}
+	}
+	capabilities.HasProxyCore = len(capabilities.ProxyCores) > 0
+	return capabilities
+}
+
 func proxyURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5" && u.Scheme != "socks5h") {
@@ -104,7 +122,7 @@ func (s *Service) clientForNode(ctx context.Context, n models.SubNode) (*http.Cl
 }
 
 func startCore(ctx context.Context, n models.SubNode) (*url.URL, func(), error) {
-	names := []string{"mihomo", "sing-box"}
+	names := proxyCoreNames
 	if n.ConfigKind == "sing-box" {
 		names[0], names[1] = names[1], names[0]
 	}

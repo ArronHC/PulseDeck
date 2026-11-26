@@ -21,6 +21,7 @@ import {
   formatExpiryCountdown,
   formatLatency,
   formatRelativeTime,
+  formatTestMethod,
   getFraudTier,
   getLatencyBadgeClass,
 } from "@/lib/hubApi";
@@ -33,6 +34,14 @@ import type {
 import { formatBytes } from "@/utils/unitHelper";
 import { countryCodeToFlagEmoji } from "@/utils/regionCode";
 import { HubCard, HubEmptyState } from "@/components/hub/HubUi";
+import {
+  defaultDirForField,
+  type NodeSortField,
+  NodeSortSelect,
+  SortableTableHeader,
+  type SortDirection,
+  sortSubscriptionNodes,
+} from "@/components/hub/NodeSortControls";
 import { WorldMapCard, type MapMode } from "@/components/hub/WorldMapCard";
 import { loginPath } from "@/utils/loginRedirect";
 
@@ -61,6 +70,8 @@ const SubscriptionsPageInner: React.FC = () => {
   const [searchText, setSearchText] = useState<string>(
     searchParams.get("search") || "",
   );
+  const [sortBy, setSortBy] = useState<NodeSortField>("default");
+  const [sortDir, setSortDir] = useState<SortDirection>("asc");
 
   // Read-only IPPure self summary banner
   const [purityBarOpen, setPurityBarOpen] = useState<boolean>(true);
@@ -106,9 +117,18 @@ const SubscriptionsPageInner: React.FC = () => {
     return Array.from(set).sort();
   }, [nodes]);
 
+  const handleToggleSort = (column: NodeSortField) => {
+    if (sortBy === column) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(column);
+      setSortDir(defaultDirForField(column));
+    }
+  };
+
   const filteredNodes = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    return nodes.filter((n) => {
+    const filtered = nodes.filter((n) => {
       if (selectedSubId !== "all" && String(n.subscription_id) !== selectedSubId) {
         return false;
       }
@@ -133,6 +153,7 @@ const SubscriptionsPageInner: React.FC = () => {
       }
       return true;
     });
+    return sortSubscriptionNodes(filtered, sortBy, sortDir);
   }, [
     nodes,
     selectedSubId,
@@ -140,6 +161,8 @@ const SubscriptionsPageInner: React.FC = () => {
     selectedProtocol,
     onlyAvailable,
     searchText,
+    sortBy,
+    sortDir,
   ]);
 
   const sortedCountries = useMemo(
@@ -570,6 +593,15 @@ const SubscriptionsPageInner: React.FC = () => {
                 <span>仅看可用</span>
               </label>
 
+              <NodeSortSelect
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onChange={(nextBy, nextDir) => {
+                  setSortBy(nextBy);
+                  setSortDir(nextDir);
+                }}
+              />
+
               {selectedCountry && (
                 <button
                   type="button"
@@ -591,16 +623,48 @@ const SubscriptionsPageInner: React.FC = () => {
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-[var(--hub-border)] bg-[var(--hub-canvas)] text-[11px] font-medium text-[var(--hub-muted)]">
-                  <th className="px-4 py-2.5">节点名称 / 协议</th>
-                  <th className="px-4 py-2.5">地区</th>
-                  <th className="px-4 py-2.5">延迟</th>
-                  <th className="px-4 py-2.5">下载速度</th>
-                  <th className="px-4 py-2.5">IPPure 纯净度</th>
+                  <SortableTableHeader
+                    label="节点名称 / 协议"
+                    column="name"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleToggleSort}
+                  />
+                  <SortableTableHeader
+                    label="地区"
+                    column="country"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleToggleSort}
+                  />
+                  <SortableTableHeader
+                    label="延迟"
+                    column="latency"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleToggleSort}
+                  />
+                  <SortableTableHeader
+                    label="下载速度"
+                    column="download"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleToggleSort}
+                  />
+                  <SortableTableHeader
+                    label="IPPure 纯净度"
+                    column="fraud_score"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleToggleSort}
+                  />
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--hub-border)]">
                 {filteredNodes.map((node) => {
                   const tier = getFraudTier(node.ippure?.fraud_score);
+                  const isTested = node.test_status !== "untested" || node.latency_ms !== 0;
+                  const methodBadge = isTested ? formatTestMethod(node.test_method) : null;
                   return (
                     <tr
                       key={node.id}
@@ -634,13 +698,26 @@ const SubscriptionsPageInner: React.FC = () => {
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap font-mono tabular-nums">
-                        <span
-                          className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${getLatencyBadgeClass(
-                            node.latency_ms,
-                          )}`}
-                        >
-                          {formatLatency(node.latency_ms)}
-                        </span>
+                        <div className="inline-flex flex-wrap items-center gap-1.5">
+                          <span
+                            title={node.test_message || undefined}
+                            className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${getLatencyBadgeClass(
+                              node.latency_ms,
+                            )}`}
+                          >
+                            {node.latency_ms < 0 && node.test_status === "error"
+                              ? "失败"
+                              : formatLatency(node.latency_ms)}
+                          </span>
+                          {methodBadge && (
+                            <span
+                              title={methodBadge.title}
+                              className={`inline-flex rounded border px-1.5 py-0.5 font-sans text-[10px] font-medium ${methodBadge.badgeClass}`}
+                            >
+                              {methodBadge.label}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap font-mono tabular-nums text-[var(--hub-ink)]">

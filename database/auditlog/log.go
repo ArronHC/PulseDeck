@@ -6,6 +6,7 @@ import (
 
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
+	"gorm.io/gorm"
 )
 
 func Log(ip, uuid, message, msgType string) {
@@ -16,7 +17,10 @@ func Log(ip, uuid, message, msgType string) {
 // representing a single lifecycle event (such as a terminal session) can update
 // the entry in place instead of emitting duplicate rows.
 func LogWithID(ip, uuid, message, msgType string) uint {
-	db := dbcore.GetDBInstance()
+	return logWithDB(dbcore.GetDBInstance(), ip, uuid, message, msgType)
+}
+
+func logWithDB(db *gorm.DB, ip, uuid, message, msgType string) uint {
 	logEntry := &models.Log{
 		IP:      ip,
 		UUID:    uuid,
@@ -43,7 +47,11 @@ func UpdateMessage(id uint, message string) {
 }
 
 func EventLog(eventType, message string) {
-	Log("", "", message, eventType)
+	EventLogWithDB(dbcore.GetDBInstance(), eventType, message)
+}
+
+func EventLogWithDB(db *gorm.DB, eventType, message string) {
+	_ = logWithDB(db, "", "", message, eventType)
 }
 
 // Delete logs older than 30 days

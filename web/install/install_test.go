@@ -51,6 +51,24 @@ func performJSON(r http.Handler, method, path string, body any) *httptest.Respon
 	return response
 }
 
+func TestInstallEndpointsAreUnavailableAfterDeactivate(t *testing.T) {
+	r, _, controller := setupInstallRouter(t)
+	if response := performJSON(r, http.MethodGet, APIPath+"/status", nil); response.Code != http.StatusOK {
+		t.Fatalf("active status endpoint returned %d", response.Code)
+	}
+	controller.Deactivate()
+	for _, endpoint := range []struct{ method, path string }{
+		{http.MethodGet, "/status"},
+		{http.MethodPost, "/test-db"},
+		{http.MethodPost, "/complete"},
+	} {
+		response := performJSON(r, endpoint.method, APIPath+endpoint.path, nil)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("%s %s returned %d, want 404", endpoint.method, endpoint.path, response.Code)
+		}
+	}
+}
+
 func TestInstallRejectsInvalidInputWithoutCreatingAccount(t *testing.T) {
 	r, db, _ := setupInstallRouter(t)
 	response := performJSON(r, http.MethodPost, APIPath+"/complete", completeRequest{

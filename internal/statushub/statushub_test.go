@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/komari-monitor/komari/database/models"
+	messageevent "github.com/komari-monitor/komari/database/models/messageEvent"
 	"github.com/komari-monitor/komari/internal/config"
 	"github.com/komari-monitor/komari/internal/metricstore"
 	"github.com/komari-monitor/komari/pkg/metric"
@@ -35,7 +36,7 @@ func testHub(t *testing.T) *Service {
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	require.NoError(t, db.AutoMigrate(
 		&models.UptimeMonitor{}, &models.UptimeHeartbeat{}, &models.UptimeIncident{}, &models.UptimeKumaSource{},
-		&models.SubSource{}, &models.SubNode{}, &models.SubSpeedSample{}, &models.IPPureSelfCache{}, &models.Client{},
+		&models.SubSource{}, &models.SubNode{}, &models.SubSpeedSample{}, &models.IPPureSelfCache{}, &models.Client{}, &models.Log{},
 	))
 	return New(db)
 }
@@ -134,7 +135,7 @@ func TestSubscriptionRefreshPreservesOverrides(t *testing.T) {
 	source, err := s.SaveSubscription(ctx, 0, SubscriptionInput{Name: ptr("Airport"), URL: ptr(provider.URL + "/api/v1/client/subscribe?token=private-token")})
 	require.NoError(t, err)
 	require.Equal(t, int64(1798761600), source.Expire)
-	nodes, err := s.Nodes(ctx, NodeFilter{})
+	nodes, err := s.Nodes(ctx, NodeFilter{}, false)
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	nodeID := nodes[0].ID
@@ -144,7 +145,7 @@ func TestSubscriptionRefreshPreservesOverrides(t *testing.T) {
 	content.Store(second)
 	_, err = s.RefreshSubscription(ctx, source.ID, true)
 	require.NoError(t, err)
-	nodes, err = s.Nodes(ctx, NodeFilter{SubscriptionID: source.ID, Country: "de", Search: "AIRPORT"})
+	nodes, err = s.Nodes(ctx, NodeFilter{SubscriptionID: source.ID, Country: "de", Search: "AIRPORT"}, false)
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	require.Equal(t, nodeID, nodes[0].ID)
@@ -152,7 +153,7 @@ func TestSubscriptionRefreshPreservesOverrides(t *testing.T) {
 	require.Equal(t, "Berlin", nodes[0].City)
 	require.Equal(t, 52.1, nodes[0].Lat)
 	require.Zero(t, nodes[0].Lng)
-	nodes, err = s.Nodes(ctx, NodeFilter{OnlyEnabled: true})
+	nodes, err = s.Nodes(ctx, NodeFilter{OnlyEnabled: true}, false)
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	require.Equal(t, "London", nodes[0].Name)
@@ -192,7 +193,7 @@ func TestIPPureParsingAndRedirects(t *testing.T) {
 
 	s := testHub(t)
 	ctx := t.Context()
-	self, err := s.IPPureSelf(ctx)
+	self, err := s.IPPureSelf(ctx, true)
 	require.NoError(t, err)
 	require.Nil(t, self)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +208,7 @@ func TestIPPureParsingAndRedirects(t *testing.T) {
 	direct, err := s.CheckIPPure(ctx, "")
 	require.NoError(t, err)
 	require.Equal(t, value.IP, direct.IP)
-	cached, err := s.IPPureSelf(ctx)
+	cached, err := s.IPPureSelf(ctx, true)
 	require.NoError(t, err)
 	require.Equal(t, direct.IP, cached.IP)
 	require.True(t, direct.CheckedAt.Equal(*cached.CheckedAt))
@@ -239,13 +240,14 @@ func TestIPPureParsingAndRedirects(t *testing.T) {
 	require.Equal(t, 50.1025, nodes[0].Lat)
 	require.Equal(t, 22, *nodes[0].IPPure.FraudScore)
 	s.testURL, s.downloadURL = "http://test.invalid/speed", "http://test.invalid/speed"
-	for _, mode := range []string{"tcp", "http", "download"} {
-		results, err := s.CheckSpeed(ctx, SpeedInput{TestFilter: TestFilter{SubscriptionID: source.ID}, Mode: mode, Concurrency: 2})
+	for _, test := range []struct{ mode, method string }{{"tcp", "tcp"}, {"http", "proxy_http"}, {"download", "proxy_download"}} {
+		results, err := s.CheckSpeed(ctx, SpeedInput{TestFilter: TestFilter{SubscriptionID: source.ID}, Mode: test.mode, Concurrency: 2})
 		require.NoError(t, err)
 		require.Len(t, results, 1)
 		require.Equal(t, "ok", results[0].TestStatus)
 		require.Positive(t, results[0].LatencyMS)
-		if mode == "download" {
+		require.Equal(t, test.method, results[0].TestMethod)
+		if test.mode == "download" {
 			require.Positive(t, results[0].DownloadMbps)
 		}
 	}
@@ -270,10 +272,180 @@ func TestCoreFallbackAndURIConversion(t *testing.T) {
 	require.Len(t, nodes, 1)
 	require.Equal(t, "ok", nodes[0].TestStatus)
 	require.Contains(t, nodes[0].TestMessage, "TCP fallback")
+	require.Equal(t, "tcp_fallback", nodes[0].TestMethod)
 	nodes, err = s.CheckNodePurity(t.Context(), selected)
 	require.NoError(t, err)
 	require.Contains(t, nodes[0].IPPureError, "install mihomo or sing-box")
 	require.NotContains(t, nodes[0].IPPureError, "plain-secret")
+}
+
+func TestScheduledSubscriptionChecks(t *testing.T) {
+	s := testHub(t)
+	ctx := t.Context()
+	now := time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/purity" {
+			_, _ = io.WriteString(w, purityPayload)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(target.Close)
+	s.testURL, s.purityURL = "http://test.invalid/speed", "http://test.invalid/purity"
+	source, err := s.SaveSubscription(ctx, 0, SubscriptionInput{
+		Name: ptr("Scheduled"), RawContent: ptr(target.URL + "#Tokyo"), AutoSpeedHours: ptr(1), AutoPurityHours: ptr(2),
+	})
+	require.NoError(t, err)
+	for _, input := range []SubscriptionInput{{AutoSpeedHours: ptr(-1)}, {AutoSpeedHours: ptr(169)}, {AutoPurityHours: ptr(721)}, {ExpireAlertDays: ptr(366)}} {
+		_, err := s.SaveSubscription(ctx, source.ID, input)
+		require.ErrorAs(t, err, new(InputError))
+	}
+	disabled := models.SubSource{Name: "Disabled", AutoSpeedHours: 1, AutoPurityHours: 1}
+	require.NoError(t, s.db.Create(&disabled).Error)
+
+	for _, selectJobs := range []func(context.Context) ([]scheduledJob, error){s.autoSpeedJobs, s.autoPurityJobs} {
+		jobs, err := selectJobs(ctx)
+		require.NoError(t, err)
+		require.Len(t, jobs, 1)
+		require.Equal(t, source.ID, jobs[0].id)
+		require.NoError(t, jobs[0].run(ctx))
+		require.NoError(t, jobs[0].run(ctx), "a stale job cannot claim the same interval twice")
+		jobs, err = selectJobs(ctx)
+		require.NoError(t, err)
+		require.Empty(t, jobs)
+	}
+	nodes, err := s.Nodes(ctx, NodeFilter{SubscriptionID: source.ID}, true)
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	require.Equal(t, "proxy_http", nodes[0].TestMethod)
+	require.Equal(t, 22, *nodes[0].IPPure.FraudScore)
+	var samples int64
+	require.NoError(t, s.db.Model(&models.SubSpeedSample{}).Count(&samples).Error)
+	require.EqualValues(t, 1, samples)
+	require.NoError(t, s.db.First(&source, source.ID).Error)
+	for _, stamp := range []*time.Time{source.LastSpeedAttemptAt, source.LastSpeedTestAt, source.LastPurityAttemptAt, source.LastPurityCheckAt} {
+		require.NotNil(t, stamp)
+		require.True(t, now.Equal(*stamp))
+	}
+	now = now.Add(time.Hour)
+	speed, err := s.autoSpeedJobs(ctx)
+	require.NoError(t, err)
+	require.Len(t, speed, 1)
+	purity, err := s.autoPurityJobs(ctx)
+	require.NoError(t, err)
+	require.Empty(t, purity)
+}
+
+func TestSubscriptionExpiryAndPurityAlertCooldowns(t *testing.T) {
+	s := testHub(t)
+	ctx := t.Context()
+	now := time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	events := make(chan models.EventMessage, 10)
+	s.notify = func(event models.EventMessage) { events <- event }
+	var score atomic.Int64
+	score.Store(43)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintf(w, `{"ip":"192.0.2.5","fraudScore":%d,"isResidential":true}`, score.Load())
+	}))
+	t.Cleanup(target.Close)
+	s.purityURL = "http://test.invalid/purity"
+	source, err := s.SaveSubscription(ctx, 0, SubscriptionInput{
+		Name: ptr("Relay"), RawContent: ptr(target.URL + "#Tokyo"), ExpireAlertDays: ptr(2),
+	})
+	require.NoError(t, err)
+	require.NoError(t, s.db.Model(&source).Update("expire", now.Add(48*time.Hour).Unix()).Error)
+	job, err := s.subscriptionAlertJobs(ctx)
+	require.NoError(t, err)
+	require.Len(t, job, 1)
+	require.NoError(t, job[0].run(ctx))
+	require.NoError(t, job[0].run(ctx))
+	require.Len(t, events, 1)
+	require.Equal(t, messageevent.Expire, (<-events).Event)
+
+	checkPurity := func(newScore int64) uint {
+		t.Helper()
+		score.Store(newScore)
+		nodes, err := s.CheckNodePurity(ctx, TestFilter{SubscriptionID: source.ID})
+		require.NoError(t, err)
+		require.Len(t, nodes, 1)
+		require.EqualValues(t, newScore, *nodes[0].IPPure.FraudScore)
+		return nodes[0].ID
+	}
+	nodeID := checkPurity(43)
+	require.Empty(t, events)
+	checkPurity(75)
+	require.Len(t, events, 1)
+	require.Equal(t, messageevent.Alert, (<-events).Event)
+	var node models.SubNode
+	require.NoError(t, s.db.First(&node, nodeID).Error)
+	require.NotNil(t, node.PurityAlertedAt)
+	require.True(t, now.Equal(*node.PurityAlertedAt))
+	now = now.Add(5 * time.Hour)
+	checkPurity(43)
+	checkPurity(75)
+	require.Empty(t, events)
+	now = now.Add(time.Hour)
+	checkPurity(43)
+	checkPurity(75)
+	require.Len(t, events, 1)
+	require.Equal(t, messageevent.Alert, (<-events).Event)
+	job, err = s.subscriptionAlertJobs(ctx)
+	require.NoError(t, err)
+	require.Empty(t, job)
+	now = now.Add(18 * time.Hour)
+	job, err = s.subscriptionAlertJobs(ctx)
+	require.NoError(t, err)
+	require.Len(t, job, 1)
+	require.NoError(t, job[0].run(ctx))
+	require.Len(t, events, 1)
+	require.Equal(t, messageevent.Expire, (<-events).Event)
+	var warnings int64
+	require.NoError(t, s.db.Model(&models.Log{}).Where("msg_type = ?", "warn").Count(&warnings).Error)
+	require.EqualValues(t, 4, warnings)
+}
+
+func TestSeedDemoIfEmpty(t *testing.T) {
+	for _, existing := range []any{
+		&models.Client{UUID: "existing", Token: "registered"},
+		&models.UptimeMonitor{Name: "Existing"},
+		&models.SubSource{Name: "Existing"},
+	} {
+		t.Run(fmt.Sprintf("%T", existing), func(t *testing.T) {
+			s := testHub(t)
+			require.NoError(t, s.db.Create(existing).Error)
+			require.NoError(t, SeedDemoIfEmpty(t.Context(), s.db))
+			var count int64
+			require.NoError(t, s.db.Model(&models.SubNode{}).Count(&count).Error)
+			require.Zero(t, count)
+		})
+	}
+	s := testHub(t)
+	ctx := t.Context()
+	require.NoError(t, SeedDemoIfEmpty(ctx, s.db))
+	require.NoError(t, SeedDemoIfEmpty(ctx, s.db))
+	sources, err := s.Subscriptions(ctx, true)
+	require.NoError(t, err)
+	require.Len(t, sources, 1)
+	require.Equal(t, "https://demo.example.com/subscribe", sources[0].URL)
+	require.Equal(t, 12, sources[0].AvailableCount)
+	data, err := s.SubscriptionMap(ctx)
+	require.NoError(t, err)
+	require.Len(t, data.Countries, 6)
+	require.Len(t, data.Markers, 12)
+	uptime, err := s.Uptime(ctx, 24*time.Hour, false)
+	require.NoError(t, err)
+	require.Equal(t, 3, uptime.Total)
+	require.Equal(t, 3, uptime.Paused)
+	require.Len(t, uptime.Monitors[0].Heartbeats, 36)
+	var clients []models.Client
+	require.NoError(t, s.db.Find(&clients).Error)
+	require.Len(t, clients, 4)
+	for _, client := range clients {
+		require.True(t, strings.HasPrefix(client.IPv4, "198.51.100."))
+		require.NotEmpty(t, client.Token)
+	}
 }
 
 func TestUptimeCheckAndIncidentLifecycle(t *testing.T) {

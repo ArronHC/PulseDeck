@@ -56,7 +56,19 @@ func Register(public, admin *gin.RouterGroup, service *hub.Service) {
 		data, err := service.Subscriptions(c.Request.Context(), false)
 		result(c, data, err)
 	})
-	subscriptions.GET("/nodes", func(c *gin.Context) {
+	subscriptions.GET("/nodes", listNodes(service, false))
+	subscriptions.GET("/map", func(c *gin.Context) {
+		data, err := service.SubscriptionMap(c.Request.Context())
+		result(c, data, err)
+	})
+	subscriptions.GET("/ippure-self", readIPPureSelf(service, false))
+
+	registerUptimeAdmin(admin.Group("/uptime"), service)
+	registerSubscriptionsAdmin(admin.Group("/subscriptions"), service)
+}
+
+func listNodes(service *hub.Service, admin bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		filter := hub.NodeFilter{Country: strings.TrimSpace(c.Query("country")), Search: strings.TrimSpace(c.Query("search"))}
 		if raw := c.Query("subscription_id"); raw != "" {
 			id, err := parseID(raw)
@@ -74,20 +86,16 @@ func Register(public, admin *gin.RouterGroup, service *hub.Service) {
 			}
 			filter.OnlyEnabled = value
 		}
-		data, err := service.Nodes(c.Request.Context(), filter)
+		data, err := service.Nodes(c.Request.Context(), filter, admin)
 		result(c, data, err)
-	})
-	subscriptions.GET("/map", func(c *gin.Context) {
-		data, err := service.SubscriptionMap(c.Request.Context())
-		result(c, data, err)
-	})
-	subscriptions.GET("/ippure-self", func(c *gin.Context) {
-		data, err := service.IPPureSelf(c.Request.Context())
-		result(c, data, err)
-	})
+	}
+}
 
-	registerUptimeAdmin(admin.Group("/uptime"), service)
-	registerSubscriptionsAdmin(admin.Group("/subscriptions"), service)
+func readIPPureSelf(service *hub.Service, admin bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		data, err := service.IPPureSelf(c.Request.Context(), admin)
+		result(c, data, err)
+	}
 }
 
 func registerUptimeAdmin(group *gin.RouterGroup, service *hub.Service) {
@@ -135,6 +143,11 @@ func registerSubscriptionsAdmin(group *gin.RouterGroup, service *hub.Service) {
 		data, err := service.Subscriptions(c.Request.Context(), true)
 		result(c, data, err)
 	})
+	group.GET("/nodes", listNodes(service, true))
+	group.GET("/ippure-self", readIPPureSelf(service, true))
+	group.GET("/capabilities", func(c *gin.Context) {
+		result(c, service.ProxyCapabilities(), nil)
+	})
 	save := func(c *gin.Context, id uint) {
 		var input hub.SubscriptionInput
 		if !bind(c, &input, false) {
@@ -178,6 +191,16 @@ func registerSubscriptionsAdmin(group *gin.RouterGroup, service *hub.Service) {
 			return
 		}
 		data, err := service.CheckSpeed(c.Request.Context(), input)
+		result(c, data, err)
+	})
+	group.POST("/speed-results", func(c *gin.Context) {
+		var input struct {
+			Results []hub.SpeedReportItem `json:"results"`
+		}
+		if !bind(c, &input, false) {
+			return
+		}
+		data, err := service.SaveSpeedResults(c.Request.Context(), input.Results)
 		result(c, data, err)
 	})
 	group.POST("/test-purity", func(c *gin.Context) {

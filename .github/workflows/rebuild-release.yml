@@ -35,7 +35,7 @@ jobs:
       - name: Build selected frontend artifact
         uses: ./.github/actions/build-frontend
         with:
-          artifact-name: komari-frontend
+          artifact-name: pulsedeck-frontend
           ref: ${{ inputs.frontend_ref }}
 
   build-and-attach-binaries:
@@ -81,7 +81,7 @@ jobs:
           ref: ${{ inputs.server_ref }}
 
       - name: Restore frontend artifact
-        uses: komari-monitor/komari/.github/actions/restore-frontend@main
+        uses: ./.github/actions/restore-frontend
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -89,7 +89,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install Zig cross-compiler toolchain
-        uses: komari-monitor/komari/.github/actions/setup-zig@main
+        uses: ./.github/actions/setup-zig
 
       - name: Build binary
         env:
@@ -101,7 +101,7 @@ jobs:
           GIN_MODE: release
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          BINARY_NAME=komari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.binary_extension }}
+          BINARY_NAME=pulsedeck-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.binary_extension }}
           VERSION_HASH="$(git rev-parse HEAD)"
           LDFLAGS="-s -w -buildid= -extldflags=-Wl,--gc-sections,--strip-all -X github.com/komari-monitor/komari/utils.CurrentVersion=${RELEASE_TAG} -X github.com/komari-monitor/komari/utils.VersionHash=${VERSION_HASH}"
           go build -trimpath -tags "nomsgpack sqlite_omit_load_extension" -ldflags="$LDFLAGS" -o "$BINARY_NAME"
@@ -111,14 +111,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          BINARY_NAME=komari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.binary_extension }}
+          BINARY_NAME=pulsedeck-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.binary_extension }}
           gh release upload "$RELEASE_TAG" "$BINARY_NAME" --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Upload binary as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: komari-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: komari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.binary_extension }}
+          name: pulsedeck-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: pulsedeck-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.binary_extension }}
 
   build-and-push-docker:
     needs: build-and-attach-binaries
@@ -133,7 +133,7 @@ jobs:
       - name: Download Docker binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: komari-linux-*
+          pattern: pulsedeck-linux-*
           path: .
           merge-multiple: true
 
@@ -150,13 +150,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Build and push version Docker image
+      - name: Build and push Full version Docker image (with mihomo)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.ci
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release_tag }}
+          build-args: |
+            INSTALL_PROXY_CORE=mihomo
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release_tag }}-full
+          no-cache: true
+          provenance: false
+
+      - name: Build and push Lite version Docker image (without proxy core)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ci
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            INSTALL_PROXY_CORE=none
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release_tag }}-lite
           no-cache: true
           provenance: false

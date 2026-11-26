@@ -1,12 +1,12 @@
 # Fast CI Dockerfile for pre-built multi-arch binaries (used by GitHub Actions).
-# Uses Dockerfile.ci.dockerignore so only komari-linux-{amd64,arm64} enter the build context.
+# Uses Dockerfile.ci.dockerignore so only pulsedeck-linux-{amd64,arm64} enter the build context.
 FROM alpine:3.21
 
 WORKDIR /app
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG INSTALL_PROXY_CORE=none
+ARG INSTALL_PROXY_CORE=mihomo
 ARG MIHOMO_VERSION=v1.19.12
 
 RUN apk add --no-cache ca-certificates curl tzdata \
@@ -30,7 +30,7 @@ RUN apk add --no-cache ca-certificates curl tzdata \
     esac \
  && mkdir -p /app/data /app/cache
 
-COPY --chmod=755 komari-${TARGETOS}-${TARGETARCH} /app/pulsedeck
+COPY --chmod=755 pulsedeck-${TARGETOS}-${TARGETARCH} /app/pulsedeck
 
 ENV GIN_MODE=release
 ENV KOMARI_LISTEN=0.0.0.0:25774

@@ -59,50 +59,60 @@ type UptimeKumaSource struct {
 }
 
 type SubSource struct {
-	ID              uint
-	Name            string
-	SourceType      string
-	URL             string `json:"-" gorm:"type:text"`
-	RawContent      string `json:"-" gorm:"type:text"`
-	Upload          int64
-	Download        int64
-	Total           int64
-	Expire          int64
-	AutoUpdateHours int
-	Enabled         bool
-	LastSyncedAt    *time.Time
-	LastAttemptAt   *time.Time
-	LastError       string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                  uint
+	Name                string
+	SourceType          string
+	URL                 string `json:"-" gorm:"type:text"`
+	RawContent          string `json:"-" gorm:"type:text"`
+	Upload              int64
+	Download            int64
+	Total               int64
+	Expire              int64
+	AutoUpdateHours     int
+	AutoSpeedHours      int        `json:"auto_speed_hours"`
+	AutoPurityHours     int        `json:"auto_purity_hours"`
+	ExpireAlertDays     int        `json:"expire_alert_days"`
+	LastSpeedTestAt     *time.Time `json:"last_speed_test_at"`
+	LastSpeedAttemptAt  *time.Time `json:"-"`
+	LastPurityCheckAt   *time.Time `json:"last_purity_check_at"`
+	LastPurityAttemptAt *time.Time `json:"-"`
+	ExpireAlertedAt     *time.Time `json:"-"`
+	Enabled             bool
+	LastSyncedAt        *time.Time
+	LastAttemptAt       *time.Time
+	LastError           string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type SubNode struct {
-	ID             uint
-	SubscriptionID uint   `gorm:"index;uniqueIndex:idx_sub_fingerprint,priority:1"`
-	Fingerprint    string `json:"-" gorm:"size:64;uniqueIndex:idx_sub_fingerprint,priority:2"`
-	Name           string
-	Protocol       string
-	Host           string
-	Port           int
-	ConfigKind     string `json:"-"`
-	RawConfig      string `json:"-" gorm:"type:text"`
-	CountryCode    string `gorm:"size:2;index"`
-	CountryName    string
-	City           string
-	Lat            float64
-	Lng            float64
-	GeoManual      bool
-	HasCoordinates bool
-	Enabled        bool
-	LatencyMS      int64
-	DownloadMbps   float64
-	TestStatus     string
-	TestMessage    string
-	TestedAt       *time.Time
-	IPPure         *IPPureResult `json:"-" gorm:"serializer:json;type:text"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              uint
+	SubscriptionID  uint   `gorm:"index;uniqueIndex:idx_sub_fingerprint,priority:1"`
+	Fingerprint     string `json:"-" gorm:"size:64;uniqueIndex:idx_sub_fingerprint,priority:2"`
+	Name            string
+	Protocol        string
+	Host            string
+	Port            int
+	ConfigKind      string `json:"-"`
+	RawConfig       string `json:"-" gorm:"type:text"`
+	CountryCode     string `gorm:"size:2;index"`
+	CountryName     string
+	City            string
+	Lat             float64
+	Lng             float64
+	GeoManual       bool
+	HasCoordinates  bool
+	Enabled         bool
+	LatencyMS       int64
+	DownloadMbps    float64
+	TestStatus      string
+	TestMethod      string `json:"test_method"`
+	TestMessage     string
+	TestedAt        *time.Time
+	IPPure          *IPPureResult `json:"-" gorm:"serializer:json;type:text"`
+	PurityAlertedAt *time.Time    `json:"-"`
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type SubSpeedSample struct {

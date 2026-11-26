@@ -32,6 +32,7 @@ import { ThemeContext } from "@/contexts/ThemeContext";
 import { useSystemTheme } from "@/hooks/useSystemTheme";
 import { SURFACE_MOTION } from "@/lib/motion";
 import { RevealBoundary } from "@/components/motion/reveal";
+import { PulseLogoMark } from "@/components/hub/PulseLogoMark";
 import LanguageSwitch from "@/components/Language";
 import InlineSvgIcon from "@/components/InlineSvgIcon";
 import { iconMap } from "@/utils/iconHelper";
@@ -333,19 +334,7 @@ export default function PulseAdminShell({ content }: { content: ReactNode }) {
             to="/admin/overview"
             className="flex min-w-0 items-center gap-2.5 text-[var(--hub-ink)] no-underline"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 14h4l2-7 4 14 2-7h4" />
-              </svg>
-            </span>
+            <PulseLogoMark className="h-7 w-7 shrink-0" />
             <span className="truncate text-sm font-semibold tracking-tight">
               {siteName}
             </span>

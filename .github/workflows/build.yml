@@ -17,7 +17,7 @@ jobs:
       - name: Build frontend artifact
         uses: ./.github/actions/build-frontend
         with:
-          artifact-name: komari-frontend
+          artifact-name: pulsedeck-frontend
 
   build-binaries:
     needs: build-frontend
@@ -92,7 +92,7 @@ jobs:
           CGO_CFLAGS: -Os -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables
           GIN_MODE: release
         run: |
-          BINARY_NAME=komari-${{ matrix.goos }}-${{ matrix.goarch }}
+          BINARY_NAME=pulsedeck-${{ matrix.goos }}-${{ matrix.goarch }}
           # Append the appropriate executable extension based on the OS
           if [ "${{ matrix.binary_extension }}" != "" ]; then
             BINARY_NAME=${BINARY_NAME}${{ matrix.binary_extension }}
@@ -105,5 +105,5 @@ jobs:
       - name: Upload binary as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: komari-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: komari-${{ matrix.goos }}-${{ matrix.goarch }}*
+          name: pulsedeck-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: pulsedeck-${{ matrix.goos }}-${{ matrix.goarch }}*

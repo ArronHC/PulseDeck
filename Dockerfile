@@ -41,11 +41,11 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GIN_MODE=release \
 FROM alpine:3.21
 WORKDIR /app
 
-# Optional proxy core for through-node IPPure checks on VMess/VLESS/Trojan/SS/Hysteria2:
-#   none     (default) — lightweight image without external proxy core
-#   sing-box — install sing-box from Alpine edge/community
-#   mihomo   — install pinned MetaCubeX/mihomo release binary
-ARG INSTALL_PROXY_CORE=none
+# Proxy core for out-of-the-box encrypted-node speedtests and IPPure checks:
+#   mihomo   (default, full) — install pinned MetaCubeX/mihomo release binary
+#   sing-box                 — install sing-box from Alpine edge/community
+#   none     (lite)          — lightweight image without external proxy core
+ARG INSTALL_PROXY_CORE=mihomo
 ARG MIHOMO_VERSION=v1.19.12
 ARG TARGETARCH
 

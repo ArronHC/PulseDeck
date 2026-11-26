@@ -61,12 +61,12 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: "autoUpdate",
         manifestFilename: "manifest.json",
-        includeAssets: ["favicon.ico", "assets/pwa-icon.webp"],
+        includeAssets: ["favicon.svg", "favicon.ico", "apple-touch-icon.png", "assets/pwa-icon.webp", "assets/maskable-icon-512x512.png"],
         manifest: {
           name: "PulseDeck",
           short_name: "PulseDeck",
           description: "All-in-one self-hosted server probe, uptime, and node observability deck.",
-          theme_color: "#2563eb",
+          theme_color: "#0765d9",
           background_color: "#ffffff",
           display: "standalone",
           categories: ["utilities", "productivity"],
@@ -76,15 +76,15 @@ export default defineConfig(({ mode }) => {
           icons: [
             {
               src: `${base}assets/pwa-icon.webp`,
-              sizes: "192x192",
-              type: "image/webp",
-              purpose: "maskable any",
-            },
-            {
-              src: `${base}assets/pwa-icon.webp`,
               sizes: "512x512",
               type: "image/webp",
-              purpose: "maskable any",
+              purpose: "any",
+            },
+            {
+              src: `${base}assets/maskable-icon-512x512.png`,
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable",
             },
           ],
         },
