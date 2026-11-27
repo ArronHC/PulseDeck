@@ -106,7 +106,14 @@ func (s *Service) SaveSpeedResults(ctx context.Context, items []SpeedReportItem)
 	return out, nil
 }
 
-func (s *Service) testNodes(ctx context.Context, filter TestFilter, concurrency int, test func(context.Context, *models.SubNode) error) ([]Node, error) {
+func (s *Service) testNodes(
+	ctx context.Context, filter TestFilter, concurrency int,
+	test func(context.Context, *models.SubNode) error,
+	onStart func(int), onResult func(int, int, Node),
+) ([]Node, error) {
+	if len(filter.NodeIDs) > 1000 {
+		return nil, InputError("node_ids may contain at most 1000 IDs")
+	}
 	db := s.dbFor(ctx)
 	var nodes []models.SubNode
 	query := db.Order("id")
@@ -114,9 +121,6 @@ func (s *Service) testNodes(ctx context.Context, filter TestFilter, concurrency 
 		query = query.Where("subscription_id = ?", filter.SubscriptionID)
 	}
 	if filter.NodeIDs != nil {
-		if len(filter.NodeIDs) > 1000 {
-			return nil, InputError("node_ids may contain at most 1000 IDs")
-		}
 		query = query.Where("id IN ?", filter.NodeIDs)
 	} else {
 		query = query.Where("enabled = ?", true).Where("subscription_id IN (?)",
@@ -129,16 +133,24 @@ func (s *Service) testNodes(ctx context.Context, filter TestFilter, concurrency 
 	if err := db.Select("id", "name").Find(&sources).Error; err != nil {
 		return nil, err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	names := (subscriptionData{sources: sources}).names()
-	out := make([]Node, len(nodes))
-	errs := make([]error, len(nodes))
-	work := make(chan int, len(nodes))
+	total := len(nodes)
+	if onStart != nil {
+		onStart(total)
+	}
+	out := make([]Node, total)
+	errs := make([]error, total)
+	work := make(chan int, total)
+	finished := make(chan int, total)
 	for i := range nodes {
 		work <- i
 	}
 	close(work)
 	var wg sync.WaitGroup
-	for range min(concurrency, len(nodes)) {
+	for range min(concurrency, total) {
 		wg.Go(func() {
 			for i := range work {
 				if ctx.Err() != nil {
@@ -149,10 +161,24 @@ func (s *Service) testNodes(ctx context.Context, filter TestFilter, concurrency 
 					unlock()
 				}
 				out[i] = NodeView(nodes[i], names[nodes[i].SubscriptionID])
+				if onResult != nil && errs[i] == nil {
+					finished <- i
+				}
 			}
 		})
 	}
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(finished)
+	}()
+	// Publish on the caller's goroutine so callbacks can safely write to an HTTP stream.
+	completed := 0
+	for i := range finished {
+		if ctx.Err() == nil {
+			completed++
+			onResult(completed, total, out[i])
+		}
+	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -165,6 +191,14 @@ func (s *Service) testNodes(ctx context.Context, filter TestFilter, concurrency 
 }
 
 func (s *Service) CheckSpeed(ctx context.Context, input SpeedInput) ([]Node, error) {
+	return s.CheckSpeedStream(ctx, input, nil, nil)
+}
+
+// CheckSpeedStream reports results in completion order and returns them in node ID order.
+func (s *Service) CheckSpeedStream(
+	ctx context.Context, input SpeedInput,
+	onStart func(total int), onResult func(completed, total int, node Node),
+) ([]Node, error) {
 	if input.Mode == "" {
 		input.Mode = "tcp"
 	}
@@ -179,7 +213,7 @@ func (s *Service) CheckSpeed(ctx context.Context, input SpeedInput) ([]Node, err
 	}
 	return s.testNodes(ctx, input.TestFilter, input.Concurrency, func(ctx context.Context, node *models.SubNode) error {
 		return s.nodeSpeed(ctx, node, input.Mode)
-	})
+	}, onStart, onResult)
 }
 
 type speedResult struct {

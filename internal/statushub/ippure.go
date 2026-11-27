@@ -148,7 +148,7 @@ func (s *Service) IPPureSelf(ctx context.Context, admin bool) (*models.IPPureRes
 }
 
 func (s *Service) CheckNodePurity(ctx context.Context, filter TestFilter) ([]Node, error) {
-	return s.testNodes(ctx, filter, 8, s.nodePurity)
+	return s.testNodes(ctx, filter, 8, s.nodePurity, nil, nil)
 }
 
 func (s *Service) nodePurity(ctx context.Context, node *models.SubNode) error {

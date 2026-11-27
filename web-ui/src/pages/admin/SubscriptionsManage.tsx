@@ -35,15 +35,12 @@ import {
   getLatencyBadgeClass,
   patchSubscriptionNode,
   refreshSubscription,
-  reportSpeedResults,
   streamTestSubscriptionSpeed,
   testSubscriptionPurity,
   updateSubscription,
 } from "@/lib/hubApi";
-import { runBrowserSpeedTests } from "@/lib/browserSpeedTest";
 import type {
   IPPureInfo,
-  SpeedResultReportItem,
   SubscriptionCapabilities,
   SubscriptionItem,
   SubscriptionNode,
@@ -64,14 +61,12 @@ import { toast } from "sonner";
 type SpeedTestModeOption =
   | "server_http"
   | "server_download"
-  | "server_tcp"
-  | "client";
+  | "server_tcp";
 
 const SPEED_TEST_MODES: Array<{ value: SpeedTestModeOption; labelKey: string }> = [
   { value: "server_http", labelKey: "pulse.adminSubs.modeServerHttp" },
-  { value: "server_download", labelKey: "pulse.adminSubs.modeServerDownload" },
   { value: "server_tcp", labelKey: "pulse.adminSubs.modeServerTcp" },
-  { value: "client", labelKey: "pulse.adminSubs.modeClient" },
+  { value: "server_download", labelKey: "pulse.adminSubs.modeServerDownload" },
 ];
 
 interface SpeedTestProgress {
@@ -358,12 +353,15 @@ export default function SubscriptionsManagePage() {
   } = {}) => {
     if (speedAbortRef.current) return;
     const explicitIds = nodeIds && nodeIds.length > 0 ? new Set(nodeIds) : null;
+    const enabledSubIds = new Set(
+      subscriptions.filter((s) => s.enabled).map((s) => s.id),
+    );
     const targets = nodes.filter((node) => {
       if (explicitIds) return explicitIds.has(node.id);
       if (subscriptionId !== undefined && node.subscription_id !== subscriptionId) {
         return false;
       }
-      return node.enabled;
+      return node.enabled && enabledSubIds.has(node.subscription_id);
     });
     if (targets.length === 0) {
       toast.info(t("pulse.adminSubs.noNodesToTest"));
@@ -389,68 +387,47 @@ export default function SubscriptionsManagePage() {
     let unknownCount = 0;
     let failedCount = 0;
     let totalCount = targets.length;
-    let reportFailed = false;
 
     try {
-      if (speedMode === "client") {
-        setTestingNodeIds(new Set());
-        const pendingBatch: SpeedResultReportItem[] = [];
-        let flushChain = Promise.resolve();
+      setTestingNodeIds(new Set(targets.map((n) => n.id)));
+      const serverMode: "tcp" | "http" | "download" =
+        speedMode === "server_download"
+          ? "download"
+          : speedMode === "server_tcp"
+            ? "tcp"
+            : "http";
 
-        const flushBatch = (batch: SpeedResultReportItem[]) => {
-          if (batch.length === 0) return;
-          flushChain = flushChain.then(async () => {
-            try {
-              const updatedNodes = await reportSpeedResults(batch);
-              if (Array.isArray(updatedNodes) && updatedNodes.length > 0) {
-                const byId = new Map(updatedNodes.map((n) => [n.id, n]));
-                updateNodesAndSyncCounts((prev) =>
-                  prev.map((n) => byId.get(n.id) ?? n),
-                );
-              }
-            } catch {
-              reportFailed = true;
+      await streamTestSubscriptionSpeed(
+        {
+          subscription_id: subscriptionId,
+          node_ids: nodeIds,
+          mode: serverMode,
+          concurrency: 8,
+        },
+        {
+          onStart: (ev) => {
+            if (typeof ev.total === "number" && ev.total > 0) {
+              totalCount = ev.total;
+              setSpeedProgress((prev) =>
+                prev ? { ...prev, total: ev.total } : prev,
+              );
             }
-          });
-        };
-
-        await runBrowserSpeedTests(targets, {
-          concurrency: 6,
-          timeoutMs: 5000,
-          signal: controller.signal,
-          onNodeStart: (id) => {
-            setTestingNodeIds((prev) => {
-              const next = new Set(prev);
-              next.add(id);
-              return next;
-            });
           },
-          onNodeResult: (res) => {
-            const testedAt = new Date().toISOString();
+          onNode: (ev) => {
+            const tested = ev.node;
             updateNodesAndSyncCounts((prev) =>
-              prev.map((n) =>
-                n.id === res.node_id
-                  ? {
-                      ...n,
-                      latency_ms: res.latency_ms,
-                      download_mbps: res.download_mbps ?? 0,
-                      test_status: res.test_status,
-                      test_message: res.test_message,
-                      test_method: res.test_method,
-                      tested_at: testedAt,
-                    }
-                  : n,
-              ),
+              prev.map((n) => (n.id === tested.id ? tested : n)),
             );
             setTestingNodeIds((prev) => {
-              if (!prev.has(res.node_id)) return prev;
+              if (!prev.has(tested.id)) return prev;
               const next = new Set(prev);
-              next.delete(res.node_id);
+              next.delete(tested.id);
               return next;
             });
-            completed += 1;
-            if (res.test_status === "ok") okCount += 1;
-            else if (res.test_status === "unknown") unknownCount += 1;
+            completed = ev.completed;
+            if (ev.total > 0) totalCount = ev.total;
+            if (tested.test_status === "ok") okCount += 1;
+            else if (tested.test_status === "unknown") unknownCount += 1;
             else failedCount += 1;
             setSpeedProgress({
               completed,
@@ -460,78 +437,17 @@ export default function SubscriptionsManagePage() {
               failed: failedCount,
               modeLabel,
             });
-            pendingBatch.push(res);
-            if (pendingBatch.length >= 4) {
-              flushBatch(pendingBatch.splice(0, pendingBatch.length));
-            }
           },
-        });
-
-        if (pendingBatch.length > 0) {
-          flushBatch(pendingBatch.splice(0, pendingBatch.length));
-        }
-        await flushChain;
-      } else {
-        setTestingNodeIds(new Set(targets.map((n) => n.id)));
-        const serverMode: "tcp" | "http" | "download" =
-          speedMode === "server_download"
-            ? "download"
-            : speedMode === "server_tcp"
-              ? "tcp"
-              : "http";
-
-        await streamTestSubscriptionSpeed(
-          {
-            subscription_id: subscriptionId,
-            node_ids: nodeIds,
-            mode: serverMode,
-            concurrency: 8,
+          onError: (ev) => {
+            toast.error(ev.message || t("pulse.adminSubs.streamError"));
           },
-          {
-            onStart: (ev) => {
-              if (typeof ev.total === "number" && ev.total > 0) {
-                totalCount = ev.total;
-                setSpeedProgress((prev) =>
-                  prev ? { ...prev, total: ev.total } : prev,
-                );
-              }
-            },
-            onNode: (ev) => {
-              const tested = ev.node;
-              updateNodesAndSyncCounts((prev) =>
-                prev.map((n) => (n.id === tested.id ? tested : n)),
-              );
-              setTestingNodeIds((prev) => {
-                if (!prev.has(tested.id)) return prev;
-                const next = new Set(prev);
-                next.delete(tested.id);
-                return next;
-              });
-              completed = ev.completed;
-              if (ev.total > 0) totalCount = ev.total;
-              if (tested.test_status === "ok") okCount += 1;
-              else if (tested.test_status === "unknown") unknownCount += 1;
-              else failedCount += 1;
-              setSpeedProgress({
-                completed,
-                total: totalCount,
-                ok: okCount,
-                unknown: unknownCount,
-                failed: failedCount,
-                modeLabel,
-              });
-            },
-            onError: (ev) => {
-              toast.error(ev.message || t("pulse.adminSubs.streamError"));
-            },
-            onDone: (ev) => {
-              completed = ev.completed ?? completed;
-              totalCount = ev.total ?? totalCount;
-            },
+          onDone: (ev) => {
+            completed = ev.completed ?? completed;
+            totalCount = ev.total ?? totalCount;
           },
-          controller.signal,
-        );
-      }
+        },
+        controller.signal,
+      );
 
       if (controller.signal.aborted) {
         toast.info(
@@ -544,8 +460,6 @@ export default function SubscriptionsManagePage() {
               })
             : t("pulse.adminSubs.speedStopped", { completed, total: totalCount, ok: okCount }),
         );
-      } else if (reportFailed) {
-        toast.warning(t("pulse.adminSubs.speedPartialSaveWarn"));
       } else {
         toast.success(
           unknownCount > 0
@@ -717,7 +631,7 @@ export default function SubscriptionsManagePage() {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-surface)] px-2.5 text-xs font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-canvas)] disabled:opacity-60"
             >
               <Zap className="h-3.5 w-3.5 text-blue-600" />
-              <span>{speedMode === "client" ? t("pulse.adminSubs.localBatchTestBtn") : t("pulse.adminSubs.batchTestBtn")}</span>
+              <span>{t("pulse.adminSubs.batchTestBtn")}</span>
             </button>
           )}
 
@@ -764,13 +678,6 @@ export default function SubscriptionsManagePage() {
             </span>
           </div>
         ))}
-
-      {speedMode === "client" && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3.5 py-2 text-xs text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span>{t("pulse.adminSubs.browserModeNotice")}</span>
-        </div>
-      )}
 
       {/* Subscription Sources */}
       {subscriptions.length > 0 && (
@@ -904,7 +811,7 @@ export default function SubscriptionsManagePage() {
                     )}
                     <button
                       type="button"
-                      disabled={speedTesting || busyGlobal !== null}
+                      disabled={!sub.enabled || speedTesting || busyGlobal !== null}
                       onClick={() => void handleStartSpeedtest({ subscriptionId: sub.id })}
                       title={t("pulse.adminSubs.testSubTitle")}
                       className="rounded p-1 hover:bg-[var(--hub-canvas)] hover:text-blue-600 disabled:opacity-50"
@@ -1372,11 +1279,7 @@ export default function SubscriptionsManagePage() {
                             type="button"
                             disabled={busyNodeId === node.id || speedTesting}
                             onClick={() => void handleStartSpeedtest({ nodeIds: [node.id] })}
-                            title={
-                              speedMode === "client"
-                                ? t("pulse.adminSubs.testNodeLocalTitle")
-                                : t("pulse.adminSubs.testNodeStreamTitle")
-                            }
+                            title={t("pulse.adminSubs.testNodeStreamTitle")}
                             className="rounded p-1.5 text-[var(--hub-muted)] hover:bg-[var(--hub-canvas)] hover:text-blue-600 disabled:opacity-50"
                           >
                             <Zap

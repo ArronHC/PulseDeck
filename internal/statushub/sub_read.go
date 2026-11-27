@@ -1,7 +1,9 @@
 package statushub
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -110,6 +112,8 @@ type NodeFilter struct {
 	Country        string
 	Search         string
 	OnlyEnabled    bool
+	SortBy         string
+	SortDir        string // Ascending when empty.
 }
 
 type subscriptionData struct {
@@ -119,6 +123,16 @@ type subscriptionData struct {
 
 func (s *Service) readSubscriptions(ctx context.Context, secrets bool, filter NodeFilter) (subscriptionData, error) {
 	var data subscriptionData
+	switch filter.SortBy {
+	case "", "default", "latency", "download", "fraud_score", "name", "country", "tested_at":
+	default:
+		return data, InputError("sort_by must be default, latency, download, fraud_score, name, country, or tested_at")
+	}
+	switch filter.SortDir {
+	case "", "asc", "desc":
+	default:
+		return data, InputError("sort_dir must be asc or desc")
+	}
 	db := s.dbFor(ctx)
 	sourceQuery := db.Order("name, id")
 	if !secrets {
@@ -127,7 +141,16 @@ func (s *Service) readSubscriptions(ctx context.Context, secrets bool, filter No
 	if err := sourceQuery.Find(&data.sources).Error; err != nil {
 		return data, err
 	}
-	query := db.Omit("raw_config").Order("name, id")
+	query := db.Omit("raw_config")
+	defaultSort := filter.SortBy == "" || filter.SortBy == "default"
+	descending := filter.SortDir == "desc"
+	if defaultSort {
+		if descending {
+			query = query.Order("name DESC, id")
+		} else {
+			query = query.Order("name, id")
+		}
+	}
 	if filter.SubscriptionID != 0 {
 		query = query.Where("subscription_id = ?", filter.SubscriptionID)
 	}
@@ -141,7 +164,81 @@ func (s *Service) readSubscriptions(ctx context.Context, secrets bool, filter No
 	if err := query.Find(&data.nodes).Error; err != nil {
 		return data, err
 	}
+	if !defaultSort {
+		slices.SortFunc(data.nodes, func(a, b models.SubNode) int {
+			rankA, rankB := nodeSortRank(a, filter.SortBy), nodeSortRank(b, filter.SortBy)
+			if rankA != rankB {
+				return cmp.Compare(rankA, rankB)
+			}
+			if rankA == 0 {
+				// Direction only applies to the selected values. Ties use a fixed order.
+				order := compareNodeSortValue(a, b, filter.SortBy)
+				if descending {
+					order = -order
+				}
+				if order != 0 {
+					return order
+				}
+			}
+			if filter.SortBy == "name" {
+				return cmp.Compare(a.ID, b.ID)
+			}
+			return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
+		})
+	}
 	return data, nil
+}
+
+// Rank zero indicates a sortable value. Higher ranks sort last in either direction.
+func nodeSortRank(n models.SubNode, sortBy string) int {
+	switch sortBy {
+	case "latency":
+		switch {
+		case n.TestStatus == "ok" && n.LatencyMS > 0:
+			return 0
+		case n.LatencyMS >= 0 && (n.LatencyMS == 0 || n.TestStatus == "untested" || n.TestStatus == "unknown"):
+			return 1
+		default:
+			return 2
+		}
+	case "download":
+		if n.DownloadMbps > 0 {
+			return 0
+		}
+	case "fraud_score":
+		if validPurity(n) && n.IPPure.FraudScore != nil && *n.IPPure.FraudScore >= 0 {
+			return 0
+		}
+	case "country":
+		if n.CountryCode != "" {
+			return 0
+		}
+	case "tested_at":
+		if n.TestedAt != nil {
+			return 0
+		}
+	case "name":
+		return 0
+	}
+	return 1
+}
+
+func compareNodeSortValue(a, b models.SubNode, sortBy string) int {
+	switch sortBy {
+	case "latency":
+		return cmp.Compare(a.LatencyMS, b.LatencyMS)
+	case "download":
+		return cmp.Compare(a.DownloadMbps, b.DownloadMbps)
+	case "fraud_score":
+		return cmp.Compare(*a.IPPure.FraudScore, *b.IPPure.FraudScore)
+	case "country":
+		return cmp.Or(cmp.Compare(a.CountryCode, b.CountryCode), cmp.Compare(a.CountryName, b.CountryName), cmp.Compare(a.City, b.City))
+	case "tested_at":
+		return a.TestedAt.Compare(*b.TestedAt)
+	case "name":
+		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	}
+	return 0
 }
 
 func (data subscriptionData) names() map[uint]string {

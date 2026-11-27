@@ -1,8 +1,10 @@
 package statushub
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -69,7 +71,10 @@ func Register(public, admin *gin.RouterGroup, service *hub.Service) {
 
 func listNodes(service *hub.Service, admin bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		filter := hub.NodeFilter{Country: strings.TrimSpace(c.Query("country")), Search: strings.TrimSpace(c.Query("search"))}
+		filter := hub.NodeFilter{
+			Country: strings.TrimSpace(c.Query("country")), Search: strings.TrimSpace(c.Query("search")),
+			SortBy: c.Query("sort_by"), SortDir: c.Query("sort_dir"),
+		}
 		if raw := c.Query("subscription_id"); raw != "" {
 			id, err := parseID(raw)
 			if err != nil {
@@ -193,6 +198,9 @@ func registerSubscriptionsAdmin(group *gin.RouterGroup, service *hub.Service) {
 		data, err := service.CheckSpeed(c.Request.Context(), input)
 		result(c, data, err)
 	})
+	group.POST("/test-speed/stream", func(c *gin.Context) {
+		streamSpeed(c, service)
+	})
 	group.POST("/speed-results", func(c *gin.Context) {
 		var input struct {
 			Results []hub.SpeedReportItem `json:"results"`
@@ -235,6 +243,77 @@ func registerSubscriptionsAdmin(group *gin.RouterGroup, service *hub.Service) {
 		data, err := service.CheckIPPure(c.Request.Context(), strings.TrimSpace(input.Proxy))
 		result(c, data, err)
 	})
+}
+
+type speedProgress struct {
+	Completed int `json:"completed"`
+	Total     int `json:"total"`
+}
+
+func streamSpeed(c *gin.Context, service *hub.Service) {
+	var input hub.SpeedInput
+	if !bind(c, &input, true) {
+		return
+	}
+	mode := input.Mode
+	if mode == "" {
+		mode = "tcp"
+	}
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+	emit := func(event string, data any) error {
+		payload, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, payload); err != nil {
+			cancel()
+			return err
+		}
+		c.Writer.Flush()
+		return nil
+	}
+	started := false
+	progress := speedProgress{}
+	var publishErr error
+	_, err := service.CheckSpeedStream(ctx, input, func(total int) {
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		started = true
+		progress.Total = total
+		publishErr = emit("start", gin.H{"total": total, "mode": mode})
+	}, func(completed, total int, node hub.Node) {
+		if publishErr != nil {
+			return
+		}
+		next := speedProgress{Completed: completed, Total: total}
+		publishErr = emit("node", struct {
+			speedProgress
+			Node hub.Node `json:"node"`
+		}{speedProgress: next, Node: node})
+		if publishErr == nil {
+			progress = next
+		}
+	})
+	if ctx.Err() != nil {
+		return
+	}
+	if !started {
+		result(c, nil, err)
+		return
+	}
+	if publishErr != nil {
+		err = publishErr
+	}
+	if err != nil {
+		_, message := responseError(err)
+		if emit("error", gin.H{"message": message}) != nil {
+			return
+		}
+	}
+	_ = emit("done", progress)
 }
 
 func parseID(raw string) (uint, error) {
@@ -291,17 +370,24 @@ func bind(c *gin.Context, body any, optional bool) bool {
 }
 
 func result(c *gin.Context, data any, err error) {
+	if err == nil {
+		c.JSON(http.StatusOK, gin.H{"status": "success", "data": data})
+		return
+	}
+	status, message := responseError(err)
+	api.RespondError(c, status, message)
+}
+
+func responseError(err error) (int, string) {
 	var input hub.InputError
 	switch {
-	case err == nil:
-		c.JSON(http.StatusOK, gin.H{"status": "success", "data": data})
 	case errors.As(err, &input):
-		api.RespondError(c, http.StatusBadRequest, input.Error())
+		return http.StatusBadRequest, input.Error()
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		api.RespondError(c, http.StatusNotFound, "Not found")
+		return http.StatusNotFound, "Not found"
 	case errors.Is(err, hub.ErrBusy), errors.Is(err, hub.ErrChanged):
-		api.RespondError(c, http.StatusConflict, err.Error())
+		return http.StatusConflict, err.Error()
 	default:
-		api.RespondError(c, http.StatusInternalServerError, "Status hub request failed")
+		return http.StatusInternalServerError, "Status hub request failed"
 	}
 }
